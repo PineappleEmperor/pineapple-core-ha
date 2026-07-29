@@ -1,0 +1,11 @@
+#!/bin/sh
+# Reject AI-attribution trailers. This repo is human-attributed (see the README
+# AI-assistance disclaimer): commits must NOT carry Co-Authored-By: Claude,
+# Claude-Session, "Generated with ... Claude", or a 🤖 trailer. Enable once per
+# clone with:  git config core.hooksPath .githooks
+msg_file="$1"
+if grep -qiE '^(Co-Authored-By:.*(Claude|Anthropic)|Claude-Session:)|Generated with .*(Claude|Claude Code)|🤖' "$msg_file"; then
+  echo "commit-msg: AI-attribution trailer detected — this repo is human-attributed." >&2
+  echo "Strip Co-Authored-By: Claude / Claude-Session / 'Generated with Claude' / 🤖 lines." >&2
+  exit 1
+fi

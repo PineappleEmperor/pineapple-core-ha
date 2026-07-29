@@ -22,5 +22,9 @@ coordinator, services…), invoke the `ha-integration` skill. Re-invoke it after
 ## Conventions
 
 - Conventional Commits; single version bump as the last commit before merge.
+- **No AI-attribution trailers.** This repo is human-attributed (see the README
+  disclaimer): commits must NOT carry `Co-Authored-By: Claude`, `Claude-Session`,
+  "Generated with Claude", or a 🤖 trailer. The `.githooks/commit-msg` hook enforces
+  this — enable it once per clone with `git config core.hooksPath .githooks`.
 - Target Platinum quality scale — see `custom_components/pineapple_core/quality_scale.yaml`.
 - ruff + pyright (standard) clean; Python floor tracks HA's current minimum.

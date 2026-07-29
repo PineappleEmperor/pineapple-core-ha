@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.core import callback
 
-from . import PineappleCoreConfigEntry
 from .entity import PineappleCoreEntity
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from . import PineappleCoreConfigEntry
+    from .coordinator import PineappleCoreCoordinator
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001 — HA platform setup signature
     entry: PineappleCoreConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
@@ -24,7 +31,7 @@ async def async_setup_entry(
 
 
 class CoreReachableSensor(PineappleCoreEntity, BinarySensorEntity):
-    """Whether the last poll of Core succeeded.
+    """Whether Core is currently being polled successfully.
 
     Delivery does not depend on this — reminders fire from the cached queue — but
     it surfaces whether the queue is being kept fresh.
@@ -33,16 +40,13 @@ class CoreReachableSensor(PineappleCoreEntity, BinarySensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
-    def __init__(self, coordinator) -> None:  # noqa: ANN001
+    def __init__(self, coordinator: PineappleCoreCoordinator) -> None:
         """Register under the `core_reachable` translation key."""
         super().__init__(coordinator, "core_reachable")
+        self._attr_is_on = coordinator.last_update_success
 
-    @property
-    def is_on(self) -> bool:
-        """True while Core is being polled successfully."""
-        return self.coordinator.last_update_success
-
-    @property
-    def available(self) -> bool:
-        """Always available — it reports reachability itself."""
-        return True
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Reflect the latest poll outcome."""
+        self._attr_is_on = self.coordinator.last_update_success
+        super()._handle_coordinator_update()

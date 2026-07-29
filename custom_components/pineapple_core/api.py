@@ -8,7 +8,7 @@ from typing import Any
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .const import API_ACK, API_UPCOMING, REQUEST_TIMEOUT
+from .const import API_ACK, API_ACTION, API_UPCOMING, REQUEST_TIMEOUT
 
 
 class PineappleCoreError(Exception):
@@ -26,6 +26,11 @@ class Reminder:
     `data` is the ready-to-use companion-app payload block (tag, actions, push,
     …) — the integration relays it verbatim to the notify service, so Core stays
     the single source of truth for how a notification is shaped.
+
+    `nag` is Core's repeat policy the integration schedules locally
+    (`{interval, max, escalate}`) or ``None`` to fire once. `ack` is the opaque
+    retire-token echoed back on delivery (`{"row": id}` or `{"marker": {...}}`) —
+    the integration never interprets it, only relays it.
     """
 
     tag: str
@@ -33,6 +38,9 @@ class Reminder:
     title: str
     message: str
     data: dict[str, Any]
+    priority: int = 3
+    nag: dict[str, Any] | None = None
+    ack: dict[str, Any] | None = None
 
 
 class PineappleCoreClient:
@@ -59,15 +67,40 @@ class PineappleCoreClient:
                 title=r.get("title", ""),
                 message=r.get("message", ""),
                 data=r.get("data", {}),
+                priority=r.get("priority", 3),
+                nag=r.get("nag"),
+                ack=r.get("ack"),
             )
             for r in reminders
         ]
 
-    async def async_ack(self, tags: list[str]) -> None:
-        """Tell Core these tags were delivered so it doesn't re-queue them."""
-        if not tags:
+    async def async_ack(self, acks: list[dict[str, Any]]) -> None:
+        """Tell Core these entries were delivered so it retires them.
+
+        Each ack is the entry's own `ack` object relayed verbatim — Core marks
+        the backing row sent, or writes the med fire-once marker.
+        """
+        if not acks:
             return
-        await self._request("POST", API_ACK, json={"tags": tags})
+        await self._request("POST", API_ACK, json={"acks": acks})
+
+    async def async_send_action(self, token: str) -> None:
+        """Forward a tapped notification action to Core's capability webhook.
+
+        Replaces the old HA automation that POSTed `mobile_app_notification_action`
+        to the webhook: Core verifies the single-use `tok` and applies the domain
+        action (log dose / complete todo / …). The `/api/webhook/` route
+        self-authenticates via the token, so no bearer is sent.
+        """
+        try:
+            async with (
+                asyncio.timeout(REQUEST_TIMEOUT),
+                self._session.post(f"{self._base_url}{API_ACTION}", params={"tok": token}) as resp,
+            ):
+                resp.raise_for_status()
+        except (TimeoutError, ClientError) as err:
+            msg = f"Could not forward action to Core: {err}"
+            raise PineappleCoreError(msg) from err
 
     async def _request(
         self,

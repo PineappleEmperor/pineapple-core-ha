@@ -23,6 +23,12 @@ DEFAULT_WINDOW_HOURS = 12
 # Core REST endpoints (relative to base_url)
 API_UPCOMING = "/api/reminders/upcoming"
 API_ACK = "/api/reminders/ack"
+# Capability webhook a tapped notification action is forwarded to (self-authing
+# via the single-use ?tok=, so no bearer token is attached).
+API_ACTION = "/api/webhook/action"
+
+# The HA event a companion-app notification button raises when tapped.
+ACTION_EVENT = "mobile_app_notification_action"
 
 # How long a single upcoming fetch may take before we treat Core as unreachable.
 REQUEST_TIMEOUT = 15

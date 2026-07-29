@@ -21,19 +21,36 @@ from pytest_homeassistant_custom_component.common import (
 )
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.pineapple_core.coordinator import PineappleCoreCoordinator
+from custom_components.pineapple_core.coordinator import (
+    PineappleCoreCoordinator,
+    _escalated,
+    _interval_seconds,
+)
 
-from .conftest import ACK_URL, JSON_HEADERS, NOTIFY_TARGET, UPCOMING_URL
+from .conftest import ACK_URL, ACTION_URL, JSON_HEADERS, NOTIFY_TARGET, UPCOMING_URL
 
 
-def _reminder(tag: str, fire_at, *, title: str = "Bins", message: str = "Out") -> dict:
+def _reminder(
+    tag: str,
+    fire_at,
+    *,
+    action: str = "DONE",
+    nag: dict | None = None,
+) -> dict:
     """Build one Core upcoming-queue reminder payload."""
     return {
         "tag": tag,
         "fire_at": fire_at.isoformat(),
-        "title": title,
-        "message": message,
-        "data": {"tag": tag, "actions": [{"action": "DONE", "title": "Done"}]},
+        "title": "Bins",
+        "message": "Out",
+        "priority": 3,
+        "nag": nag,
+        "ack": {"row": tag},
+        "data": {
+            "tag": tag,
+            "actions": [{"action": action, "title": "Done"}],
+            "push": {"interruption-level": "active"},
+        },
     }
 
 
@@ -196,6 +213,117 @@ async def test_cancelled_reminder_is_disarmed(
     async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
     await hass.async_block_till_done()
     assert not calls  # the cancelled reminder never fired
+
+
+def test_interval_seconds_parses_and_rejects() -> None:
+    """Nag intervals map to seconds; junk / non-repeat values give None."""
+    assert _interval_seconds("15m") == 900
+    assert _interval_seconds("1h") == 3600
+    assert _interval_seconds("0m") is None
+    assert _interval_seconds("soon") is None
+    assert _interval_seconds(None) is None
+
+
+def test_escalated_raises_interruption_level_capped() -> None:
+    """Escalation climbs the level ladder one rung per step, capped at critical."""
+    base = {"push": {"interruption-level": "active"}}
+    assert _escalated(base, 1)["push"]["interruption-level"] == "time-sensitive"
+    assert _escalated(base, 2)["push"]["interruption-level"] == "critical"
+    assert _escalated(base, 9)["push"]["interruption-level"] == "critical"
+    # The original is untouched (deep-copied).
+    assert base["push"]["interruption-level"] == "active"
+
+
+async def test_nag_repeats_until_max_then_stops(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A delivered reminder re-fires its notification up to `max` times, then stops."""
+    fire_at = dt_util.utcnow() + timedelta(seconds=30)
+    reminder = _reminder("nag-1", fire_at, nag={"interval": "15m", "max": 2, "escalate": False})
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+    calls = _register_notify(hass)
+
+    coordinator = await _setup(hass, mock_config_entry)
+    async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert len(calls) == 1  # initial delivery
+    assert "nag-1" in coordinator._s.nags  # chain armed
+
+    # Drive the chain directly — deterministic, no timer wall-clock races.
+    coordinator._nag_fire("nag-1", dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert len(calls) == 2
+    assert coordinator._s.nags["nag-1"].count == 1
+
+    coordinator._nag_fire("nag-1", dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert len(calls) == 3  # max reached
+    assert "nag-1" not in coordinator._s.nags  # chain retired
+
+    coordinator._nag_fire("nag-1", dt_util.utcnow())  # no chain → no-op
+    await hass.async_block_till_done()
+    assert len(calls) == 3
+
+
+async def test_escalating_nag_raises_level(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """An `escalate` nag re-sends the notification at a higher interruption level."""
+    fire_at = dt_util.utcnow() + timedelta(seconds=30)
+    reminder = _reminder("nag-2", fire_at, nag={"interval": "15m", "max": 3, "escalate": True})
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+    calls = _register_notify(hass)
+
+    coordinator = await _setup(hass, mock_config_entry)
+    async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert calls[0].data["data"]["push"]["interruption-level"] == "active"
+
+    coordinator._nag_fire("nag-2", dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert calls[1].data["data"]["push"]["interruption-level"] == "time-sensitive"
+
+    coordinator.async_cancel_scheduled()  # the chain's next timer is still armed
+
+
+async def test_tapped_action_forwards_to_core_and_cancels_nag(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A companion-app action tap forwards the token to Core and stops its nags."""
+    fire_at = dt_util.utcnow() + timedelta(seconds=30)
+    reminder = _reminder(
+        "act-1", fire_at, action="TOK-1", nag={"interval": "15m", "max": 3, "escalate": False}
+    )
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+    aioclient_mock.post(ACTION_URL, text="ok")
+    _register_notify(hass)
+
+    coordinator = await _setup(hass, mock_config_entry)
+    async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert "act-1" in coordinator._s.nags
+    assert coordinator._s.action_tags.get("TOK-1") == "act-1"
+
+    hass.bus.async_fire("mobile_app_notification_action", {"action": "TOK-1"})
+    await hass.async_block_till_done()
+
+    forwarded = [
+        c for c in aioclient_mock.mock_calls
+        if c[0] == "POST" and str(c[1]).startswith(ACTION_URL)
+    ]
+    assert len(forwarded) == 1  # the token reached Core's webhook
+    assert "TOK-1" in str(forwarded[0][1])  # ?tok= carries it
+    assert "act-1" in coordinator._s.handled
+    assert "act-1" not in coordinator._s.nags  # nag chain cancelled at once
 
 
 async def test_auth_error_raises_config_entry_auth_failed(

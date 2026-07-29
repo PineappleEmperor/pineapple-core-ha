@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 
+from .const import ACTION_EVENT
 from .coordinator import PineappleCoreCoordinator
 
 if TYPE_CHECKING:
@@ -23,6 +24,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # A tapped notification button forwards to Core + cancels the local nag chain.
+    entry.async_on_unload(
+        hass.bus.async_listen(ACTION_EVENT, coordinator.handle_action_event)
+    )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True

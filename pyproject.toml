@@ -15,6 +15,7 @@ ignore = [
   "D203",    # incompatible with D211
   "D213",    # incompatible with D212
   "COM812",  # handled by the formatter
+  "CPY001",  # no copyright headers on source files
 ]
 
 [tool.ruff.lint.per-file-ignores]

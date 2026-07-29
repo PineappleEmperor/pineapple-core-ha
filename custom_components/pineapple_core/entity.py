@@ -17,10 +17,10 @@ class PineappleCoreEntity(CoordinatorEntity[PineappleCoreCoordinator]):
     def __init__(self, coordinator: PineappleCoreCoordinator, key: str) -> None:
         """Bind to the coordinator and the service device."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{key}"
+        self._attr_unique_id = f"{coordinator.entry_id}_{key}"
         self._attr_translation_key = key
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
+            identifiers={(DOMAIN, coordinator.entry_id)},
             name="Pineapple Core",
             manufacturer="Pineapple Core",
             entry_type=DeviceEntryType.SERVICE,

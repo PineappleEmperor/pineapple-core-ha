@@ -74,7 +74,7 @@ class PineappleCoreClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> dict[str, Any] | None:
         """One authed Core call, mapping failures onto our error types."""
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
@@ -86,7 +86,9 @@ class PineappleCoreClient:
                     json=json,
                 ) as resp:
                     if resp.status in (401, 403):
-                        raise PineappleCoreAuthError(f"Core rejected the token ({resp.status})")
+                        msg = f"Core rejected the token ({resp.status})"
+                        # Raised here so callers can distinguish auth from other failures.
+                        raise PineappleCoreAuthError(msg)  # noqa: TRY301
                     resp.raise_for_status()
                     if resp.content_type == "application/json":
                         return await resp.json()
@@ -94,6 +96,8 @@ class PineappleCoreClient:
         except PineappleCoreAuthError:
             raise
         except ClientResponseError as err:
-            raise PineappleCoreError(f"Core returned {err.status}") from err
-        except (ClientError, asyncio.TimeoutError) as err:
-            raise PineappleCoreError(f"Could not reach Core: {err}") from err
+            msg = f"Core returned {err.status}"
+            raise PineappleCoreError(msg) from err
+        except (TimeoutError, ClientError) as err:
+            msg = f"Could not reach Core: {err}"
+            raise PineappleCoreError(msg) from err

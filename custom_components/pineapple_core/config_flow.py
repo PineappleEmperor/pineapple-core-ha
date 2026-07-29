@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
@@ -27,6 +25,12 @@ from .const import (
     DOMAIN,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+
 STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_BASE_URL): str,
@@ -36,7 +40,7 @@ STEP_USER_SCHEMA = vol.Schema(
 )
 
 
-async def _validate(hass: Any, base_url: str, token: str) -> None:
+async def _validate(hass: HomeAssistant, base_url: str, token: str) -> None:
     """Prove the base URL + token reach Core before saving the entry."""
     client = PineappleCoreClient(async_get_clientsession(hass), base_url, token)
     await client.async_get_upcoming(1)
@@ -65,7 +69,7 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(
-        self, entry_data: Mapping[str, Any]
+        self, entry_data: Mapping[str, Any]  # noqa: ARG002 — HA reauth signature
     ) -> ConfigFlowResult:
         """Start reauth when Core rejects the stored token."""
         return await self.async_step_reauth_confirm()
@@ -99,7 +103,7 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
         return {}
 
     @staticmethod
-    def async_get_options_flow(config_entry: Any) -> OptionsFlow:
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:  # noqa: ARG004
         """Return the options flow for tuning poll cadence + window."""
         return PineappleCoreOptionsFlow()
 

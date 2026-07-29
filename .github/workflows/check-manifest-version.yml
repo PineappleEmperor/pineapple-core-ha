@@ -1,0 +1,47 @@
+name: Check Manifest Version
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check_version:
+    name: Manifest version bumped vs last release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Gather versions and labels
+        id: gather
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          MANIFEST=$(ls custom_components/*/manifest.json | head -1)
+          echo "pr_version=$(jq -r '.version' "$MANIFEST")" >> "$GITHUB_OUTPUT"
+          TAG=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          echo "last_release=${TAG#v}" >> "$GITHUB_OUTPUT"
+          git fetch origin "$BASE_REF" --depth=1 -q || true
+          echo "main_version=$(git show "origin/$BASE_REF:$MANIFEST" 2>/dev/null | jq -r '.version' || echo '')" >> "$GITHUB_OUTPUT"
+          echo "labels=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '[.labels[].name]|join(",")')" >> "$GITHUB_OUTPUT"
+
+      # All decision logic lives in scripts/manifest_gate.py (unit-tested in
+      # tests/test_manifest_gate.py) so the gate can't silently regress again.
+      - name: Version gate
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          python3 scripts/manifest_gate.py \
+            --last-release "${{ steps.gather.outputs.last_release }}" \
+            --main-version "${{ steps.gather.outputs.main_version }}" \
+            --pr-version "${{ steps.gather.outputs.pr_version }}" \
+            --labels "${{ steps.gather.outputs.labels }}"

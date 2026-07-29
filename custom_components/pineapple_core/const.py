@@ -8,7 +8,7 @@ DOMAIN = "pineapple_core"
 
 # Config entry data (set once, in the config flow)
 CONF_BASE_URL = "base_url"
-CONF_API_TOKEN = "api_token"
+CONF_API_TOKEN = "api_token"  # noqa: S105 — a config-key name, not a secret value
 CONF_NOTIFY_TARGET = "notify_target"
 
 # Options (tunable after setup)

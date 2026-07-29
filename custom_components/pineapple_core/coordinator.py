@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from functools import partial
-import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -64,6 +64,7 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             entry.data[CONF_BASE_URL],
             entry.data[CONF_API_TOKEN],
         )
+        self.entry_id: str = entry.entry_id
         self._notify_target: str = entry.data.get(CONF_NOTIFY_TARGET, DEFAULT_NOTIFY_TARGET)
         self._window_hours: int = entry.options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS)
         self._scheduled: dict[str, CALLBACK_TYPE] = {}
@@ -99,7 +100,9 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         """Schedule (or reschedule) a reminder's local fire callback."""
         when = dt_util.parse_datetime(reminder.fire_at)
         if when is None:
-            _LOGGER.warning("Skipping reminder %s: unparseable fire_at %r", reminder.tag, reminder.fire_at)
+            _LOGGER.warning(
+                "Skipping reminder %s: unparseable fire_at %r", reminder.tag, reminder.fire_at
+            )
             return
         if reminder.tag in self._scheduled:
             self._scheduled.pop(reminder.tag)()
@@ -111,9 +114,7 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
     def _fire(self, reminder: Reminder, _now: datetime) -> None:
         """Native scheduler hit this reminder's time — deliver it."""
         self._scheduled.pop(reminder.tag, None)
-        self.config_entry.async_create_task(
-            self.hass, self._deliver(reminder), eager_start=False
-        )
+        self.hass.async_create_task(self._deliver(reminder))
 
     async def _deliver(self, reminder: Reminder) -> None:
         """Fire the notification, then ack Core. Dedup + failure-retry safe."""
@@ -127,9 +128,11 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
                 {"title": reminder.title, "message": reminder.message, "data": reminder.data},
                 blocking=True,
             )
-        except Exception:  # noqa: BLE001 — a notify failure must retry, not vanish
+        except Exception:
             self._fired.discard(reminder.tag)  # let the next poll re-arm it
-            _LOGGER.exception("notify.%s failed for %s — will retry", self._notify_target, reminder.tag)
+            _LOGGER.exception(
+                "notify.%s failed for %s — will retry", self._notify_target, reminder.tag
+            )
             return
         self._pending_acks.add(reminder.tag)
         await self._retry_acks()

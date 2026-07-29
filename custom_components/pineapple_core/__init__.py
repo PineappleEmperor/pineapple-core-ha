@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
 
 from .coordinator import PineappleCoreCoordinator
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 type PineappleCoreConfigEntry = ConfigEntry[PineappleCoreCoordinator]
 

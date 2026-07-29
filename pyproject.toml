@@ -18,11 +18,28 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "SLF001", "ANN", "D", "INP001", "PLR2004"]
-"scripts/*" = ["T20", "INP001"]
+"tests/*" = [
+  "S101",    # asserts are the point of a test
+  "S105",    # S106 — hardcoded fixture tokens, not real secrets
+  "S106",
+  "SLF001",  # tests legitimately read private members (HA core does the same)
+  "ANN",     # annotations optional in tests
+  "D",       # docstring rules relaxed for tests
+  "INP001",  # tests/ is not an importable package
+  "PLR2004", # magic values are fine in assertions
+  "PT018",   # composite asserts read fine in tests
+  "ARG001",  # pytest fixtures are injected by name, not always used
+  "EM101",   # EM102/TRY003 — inline messages fine in test helpers
+  "TRY003",
+  "TC001",   # TC002/TC003 — keep test imports at module top, not in TYPE_CHECKING
+  "TC002",
+  "TC003",
+]
+"scripts/*" = ["T20", "INP001", "D", "TRY003", "EM101", "EM102", "PLR0911", "E501", "S"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
 
 [tool.pylint.main]
 py-version = "3.14"
-
-[tool.pyright]
-typeCheckingMode = "standard"

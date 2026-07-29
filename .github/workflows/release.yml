@@ -1,0 +1,25 @@
+name: Create Release ZIP
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Create Release Asset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create ZIP file
+        run: |
+          cd custom_components/pineapple_core
+          zip -r "$GITHUB_WORKSPACE/pineapple_core.zip" . -x '*/__pycache__/*' '*.pyc'
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "$GITHUB_WORKSPACE/pineapple_core.zip" --clobber

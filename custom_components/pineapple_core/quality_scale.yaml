@@ -1,0 +1,77 @@
+# Tracking ledger only — the manifest claims no tier until every rule up to it is
+# done/exempt. `done` still needs a test that proves it (see the ha-integration skill).
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: No custom services are registered.
+  appropriate-polling: todo
+  brands: todo
+  common-modules: done
+  config-flow-test-coverage: todo
+  config-flow: todo
+  dependency-transparency: done
+  docs-actions:
+    status: exempt
+    comment: No custom services.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: todo
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: todo
+  test-before-setup: done
+  unique-config-entry: done
+  # Silver
+  config-entry-unloading: done
+  log-when-unavailable: todo
+  entity-unavailable: done
+  action-exceptions:
+    status: exempt
+    comment: No custom services.
+  reauthentication-flow: todo
+  parallel-updates: todo
+  test-coverage: todo
+  integration-owner: done
+  docs-installation-parameters: done
+  docs-configuration-parameters: done
+  # Gold
+  entity-translations: done
+  entity-device-class: done
+  devices: done
+  entity-category: done
+  entity-disabled-by-default:
+    status: exempt
+    comment: The three diagnostics are all useful by default.
+  discovery:
+    status: exempt
+    comment: Core is a user-supplied URL + token; nothing to discover on the network.
+  stale-devices:
+    status: exempt
+    comment: One service device per entry; removed with the entry.
+  diagnostics: todo
+  exception-translations: todo
+  icon-translations: todo
+  reconfiguration-flow: todo
+  dynamic-devices:
+    status: exempt
+    comment: Exactly one service device per entry.
+  discovery-update-info:
+    status: exempt
+    comment: No discovery.
+  repair-issues: todo
+  docs-use-cases: done
+  docs-supported-devices:
+    status: exempt
+    comment: Not a device integration.
+  docs-supported-functions: todo
+  docs-data-update: done
+  docs-known-limitations: todo
+  docs-troubleshooting: todo
+  docs-examples: todo
+  # Platinum
+  async-dependency: done
+  inject-websession: done
+  strict-typing: todo

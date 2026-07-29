@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Pineapple Core",
+        "description": "Point Home Assistant at your Core instance so it can deliver reminders locally.",
+        "data": {
+          "base_url": "Core base URL",
+          "api_token": "API token",
+          "notify_target": "Notify service"
+        },
+        "data_description": {
+          "base_url": "e.g. https://core.example.com",
+          "api_token": "An api:full service token minted in Core → Settings → API access",
+          "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_korat)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-enter your Core token",
+        "description": "Core rejected the stored token. Paste a fresh api:full token.",
+        "data": {
+          "api_token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Couldn't reach Core at that URL.",
+      "invalid_auth": "Core rejected that token."
+    },
+    "abort": {
+      "already_configured": "This Core instance is already set up.",
+      "reauth_successful": "Token updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pineapple Core options",
+        "data": {
+          "poll_interval": "Poll interval (minutes)",
+          "window_hours": "How far ahead to fetch (hours)"
+        },
+        "data_description": {
+          "poll_interval": "How often to re-sync the upcoming queue from Core.",
+          "window_hours": "Reminders further ahead than this aren't fetched yet."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "upcoming_count": { "name": "Upcoming reminders" },
+      "next_reminder": { "name": "Next reminder" }
+    },
+    "binary_sensor": {
+      "core_reachable": { "name": "Core reachable" }
+    }
+  }
+}

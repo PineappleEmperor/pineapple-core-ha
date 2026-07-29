@@ -1,0 +1,13 @@
+{
+  "domain": "pineapple_core",
+  "name": "Pineapple Core",
+  "codeowners": ["@PineappleEmperor"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/PineappleEmperor/pineapple-core-ha",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/PineappleEmperor/pineapple-core-ha/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

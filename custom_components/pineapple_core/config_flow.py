@@ -10,6 +10,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PineappleCoreAuthError, PineappleCoreClient, PineappleCoreError
@@ -30,13 +31,27 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-STEP_USER_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_BASE_URL): str,
-        vol.Required(CONF_API_TOKEN): str,
-        vol.Required(CONF_NOTIFY_TARGET): str,
-    }
-)
+def _user_schema(hass: HomeAssistant) -> vol.Schema:
+    """Build the setup form, offering the installed notify services as a dropdown.
+
+    `notify_target` is a per-install device (e.g. the companion app on your
+    phone), so it's picked from the notify services HA actually has — with
+    `custom_value` on, so a service that hasn't registered yet can still be typed.
+    """
+    targets = sorted(hass.services.async_services().get("notify", {}))
+    return vol.Schema(
+        {
+            vol.Required(CONF_BASE_URL): str,
+            vol.Required(CONF_API_TOKEN): str,
+            vol.Required(CONF_NOTIFY_TARGET): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=targets,
+                    custom_value=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        }
+    )
 
 
 async def _validate(hass: HomeAssistant, base_url: str, token: str) -> None:
@@ -64,7 +79,7 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={**user_input, CONF_BASE_URL: base_url},
                 )
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors
+            step_id="user", data_schema=_user_schema(self.hass), errors=errors
         )
 
     async def async_step_reauth(

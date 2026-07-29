@@ -56,6 +56,24 @@ async def test_user_step_success_creates_entry(
     assert data[CONF_NOTIFY_TARGET] == NOTIFY_TARGET
 
 
+async def test_user_step_lists_notify_services_in_dropdown(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """The notify_target field offers the installed notify services as options."""
+    aioclient_mock.get(UPCOMING_URL, json={"reminders": []})
+    hass.services.async_register("notify", "mobile_app_pixel", lambda _call: None)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    # Walk the selector's option list out of the shown schema.
+    schema = result["data_schema"].schema
+    field = next(k for k in schema if str(k) == CONF_NOTIFY_TARGET)
+    options = schema[field].config["options"]
+    assert "mobile_app_pixel" in options
+    assert schema[field].config["custom_value"] is True
+
+
 async def test_user_step_trailing_slash_stripped(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:

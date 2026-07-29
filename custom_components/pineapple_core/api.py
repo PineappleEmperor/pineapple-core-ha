@@ -49,7 +49,9 @@ class PineappleCoreClient:
         body = await self._request(
             "GET", API_UPCOMING, params={"window_hours": window_hours}
         )
-        reminders = body.get("reminders", []) if isinstance(body, dict) else []
+        # Core wraps every response in a {"data": …} envelope.
+        data = body.get("data") if isinstance(body, dict) else None
+        reminders = data.get("reminders", []) if isinstance(data, dict) else []
         return [
             Reminder(
                 tag=r["tag"],

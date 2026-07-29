@@ -77,7 +77,7 @@ async def test_fires_notify_at_fire_at_and_acks(
     fire_at = dt_util.utcnow() + timedelta(seconds=30)
     aioclient_mock.get(
         UPCOMING_URL,
-        json={"reminders": [_reminder("bins-1", fire_at)]},
+        json={"data": {"reminders": [_reminder("bins-1", fire_at)]}},
         headers=JSON_HEADERS,
     )
     aioclient_mock.post(ACK_URL, json={"ok": True})
@@ -104,7 +104,7 @@ async def test_failed_ack_does_not_double_fire(
     """A failed ack keeps the tag pending but never re-delivers it."""
     fire_at = dt_util.utcnow() + timedelta(seconds=30)
     reminder = _reminder("bins-2", fire_at)
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": [reminder]}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, status=500)  # Core can't confirm the delivery
     calls = _register_notify(hass)
 
@@ -121,7 +121,7 @@ async def test_failed_ack_does_not_double_fire(
     # fired-tag dedup must keep it from being re-armed and re-delivered, while
     # the ack is retried and now succeeds.
     aioclient_mock.clear_requests()
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": [reminder]}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, json={"ok": True})
 
     await coordinator.async_refresh()
@@ -142,7 +142,7 @@ async def test_notify_failure_leaves_reminder_to_retry(
     """If the notify call fails the tag is released and not acked, so it retries."""
     fire_at = dt_util.utcnow() + timedelta(seconds=30)
     reminder = _reminder("bins-3", fire_at)
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": [reminder]}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, json={"ok": True})
 
     attempts: list[ServiceCall] = []
@@ -177,7 +177,7 @@ async def test_cancelled_reminder_is_disarmed(
     """A reminder Core drops from the feed is unscheduled and never fires."""
     fire_at = dt_util.utcnow() + timedelta(seconds=30)
     reminder = _reminder("bins-4", fire_at)
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": [reminder]}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, json={"ok": True})
     calls = _register_notify(hass)
 
@@ -186,7 +186,7 @@ async def test_cancelled_reminder_is_disarmed(
 
     # Core cancels it — next poll returns an empty queue.
     aioclient_mock.clear_requests()
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": []}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": []}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, json={"ok": True})
     await coordinator.async_refresh()
     await hass.async_block_till_done()
@@ -204,7 +204,7 @@ async def test_auth_error_raises_config_entry_auth_failed(
     aioclient_mock: AiohttpClientMocker,
 ) -> None:
     """A 401 mid-run turns into a reauth trigger on the next poll."""
-    aioclient_mock.get(UPCOMING_URL, json={"reminders": []}, headers=JSON_HEADERS)
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": []}}, headers=JSON_HEADERS)
     aioclient_mock.post(ACK_URL, json={"ok": True})
     coordinator = await _setup(hass, mock_config_entry)
 

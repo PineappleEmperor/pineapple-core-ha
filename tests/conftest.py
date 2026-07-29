@@ -77,9 +77,10 @@ def mock_upcoming(
 
     def _set(reminders: list[dict[str, Any]] | None = None) -> None:
         aioclient_mock.clear_requests()
+        # Core wraps responses in a {"data": …} envelope.
         aioclient_mock.get(
-            UPCOMING_URL, json={"reminders": reminders or []}, headers=JSON_HEADERS
+            UPCOMING_URL, json={"data": {"reminders": reminders or []}}, headers=JSON_HEADERS
         )
-        aioclient_mock.post(ACK_URL, json={"ok": True}, headers=JSON_HEADERS)
+        aioclient_mock.post(ACK_URL, json={"data": {"ok": True}}, headers=JSON_HEADERS)
 
     return _set

@@ -26,7 +26,7 @@ remembers what it delivered and retries only the ack.
 1. In Core → **Settings → API access**, mint an `api:full` service token.
 2. In Home Assistant → **Settings → Devices & Services → Add Integration → Pineapple Core**.
 3. Enter your Core **base URL**, the **token**, and the **notify service** to fire
-   (e.g. `mobile_app_korat`).
+   (e.g. `mobile_app_your_phone`).
 4. Tune the **poll interval** and **look-ahead window** any time via the integration's
    *Configure* (options).
 

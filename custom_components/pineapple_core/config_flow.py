@@ -19,7 +19,6 @@ from .const import (
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
     CONF_WINDOW_HOURS,
-    DEFAULT_NOTIFY_TARGET,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WINDOW_HOURS,
     DOMAIN,
@@ -35,7 +34,7 @@ STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_BASE_URL): str,
         vol.Required(CONF_API_TOKEN): str,
-        vol.Required(CONF_NOTIFY_TARGET, default=DEFAULT_NOTIFY_TARGET): str,
+        vol.Required(CONF_NOTIFY_TARGET): str,
     }
 )
 

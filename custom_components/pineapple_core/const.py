@@ -15,8 +15,7 @@ CONF_NOTIFY_TARGET = "notify_target"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_WINDOW_HOURS = "window_hours"
 
-# Defaults
-DEFAULT_NOTIFY_TARGET = "mobile_app_korat"
+# Defaults (notify_target has none — it's a per-install device, required in the flow)
 DEFAULT_POLL_INTERVAL = timedelta(minutes=5)
 DEFAULT_WINDOW_HOURS = 12
 

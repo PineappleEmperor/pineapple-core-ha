@@ -29,7 +29,6 @@ from .const import (
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
     CONF_WINDOW_HOURS,
-    DEFAULT_NOTIFY_TARGET,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WINDOW_HOURS,
     DOMAIN,
@@ -123,7 +122,7 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             entry.data[CONF_API_TOKEN],
         )
         self.entry_id: str = entry.entry_id
-        self._notify_target: str = entry.data.get(CONF_NOTIFY_TARGET, DEFAULT_NOTIFY_TARGET)
+        self._notify_target: str = entry.data[CONF_NOTIFY_TARGET]
         self._window_hours: int = entry.options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS)
         self._s = _State()
 

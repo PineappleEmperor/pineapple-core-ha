@@ -12,7 +12,7 @@
         "data_description": {
           "base_url": "The address of your Core instance, including scheme and any port.",
           "api_token": "An api:full service token minted in Core → Settings → API access",
-          "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_korat)"
+          "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_your_phone)"
         }
       },
       "reauth_confirm": {

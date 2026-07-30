@@ -17,6 +17,7 @@ from .api import PineappleCoreAuthError, PineappleCoreClient, PineappleCoreError
 from .const import (
     CONF_API_TOKEN,
     CONF_BASE_URL,
+    CONF_MIRROR_ENTITIES,
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
     CONF_WINDOW_HOURS,
@@ -144,6 +145,10 @@ class PineappleCoreOptionsFlow(OptionsFlow):
                     CONF_WINDOW_HOURS,
                     default=options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS),
                 ): vol.All(int, vol.Range(min=1, max=24)),
+                vol.Optional(
+                    CONF_MIRROR_ENTITIES,
+                    default=options.get(CONF_MIRROR_ENTITIES, []),
+                ): selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

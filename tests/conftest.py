@@ -28,6 +28,7 @@ NOTIFY_TARGET = "mobile_app_test"
 UPCOMING_URL = f"{BASE_URL}/api/reminders/upcoming"
 ACK_URL = f"{BASE_URL}/api/reminders/ack"
 ACTION_URL = f"{BASE_URL}/api/webhook/action"
+HELPER_URL = f"{BASE_URL}/api/integrations/ha/helper"
 
 # The real Core sends this; the aiohttp mocker won't set it from `json=` alone,
 # and api.py only parses a body when content_type is application/json.

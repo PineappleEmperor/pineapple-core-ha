@@ -124,9 +124,17 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         self.entry_id: str = entry.entry_id
         self._notify_target: str = entry.data[CONF_NOTIFY_TARGET]
         self._window_hours: int = entry.options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS)
+        # The integration's own inbound webhook URL (set at setup) — surfaced on a
+        # diagnostic sensor so the user can copy it into Core's HA_WEBHOOK_URL.
+        self.webhook_url: str | None = None
         self._s = _State()
 
     # --- backwards-compatible views the tests (and diagnostics) read ---
+    @property
+    def notify_target(self) -> str:
+        """The notify service reminders + Core pushes are delivered to."""
+        return self._notify_target
+
     @property
     def _scheduled(self) -> dict[str, CALLBACK_TYPE]:
         return self._s.scheduled
@@ -149,11 +157,13 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             raise UpdateFailed(str(err)) from err
 
         feed = {r.tag: r for r in reminders}
-        # Drop schedules + nags for reminders Core has cancelled since the last poll.
+        # Drop only PRE-fire schedules for reminders Core cancelled since the last poll.
+        # A nag chain is NOT cancelled here: once a reminder is delivered we ack it, so
+        # Core drops it from the feed by design — the local nag chain must outlive that
+        # (it's stopped by a tap, a Core `clear` push, or reaching max, never by the
+        # feed simply no longer listing an already-delivered reminder).
         for tag in [t for t in self._s.scheduled if t not in feed]:
             self._s.scheduled.pop(tag)()
-        for tag in [t for t in self._s.nags if t not in feed]:
-            self._cancel_nag(tag)
         # (Re)arm every reminder we haven't already delivered or had acted on.
         for tag, reminder in feed.items():
             if tag in self._s.fired or tag in self._s.handled:
@@ -167,11 +177,16 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     @callback
     def _prune(self, feed: dict[str, Reminder]) -> None:
-        """Drop remembered state for tags gone from the feed and not still owed."""
-        keep = set(feed) | set(self._s.pending_acks)
+        """Drop remembered state for tags gone from the feed and not still owed.
+
+        A tag with a live nag chain is kept regardless of the feed — the chain runs
+        locally after we've acked the reminder away, and it still needs its dedup
+        memory + action-token map until it's stopped.
+        """
+        keep = set(feed) | set(self._s.pending_acks) | set(self._s.nags)
         self._s.fired = {t for t in self._s.fired if t in keep}
         self._s.handled = {t for t in self._s.handled if t in feed}
-        live = self._s.fired | self._s.handled | set(self._s.pending_acks)
+        live = keep | self._s.handled
         self._s.action_tags = {tok: tag for tok, tag in self._s.action_tags.items() if tag in live}
 
     @callback
@@ -253,7 +268,7 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
     def _nag_fire(self, tag: str, _now: datetime) -> None:
         """Re-send the notification (escalated) when a nag interval elapses, if still due."""
         nag = self._s.nags.get(tag)
-        if nag is None or tag in self._s.handled or tag not in self._s.fired:
+        if nag is None or tag in self._s.handled:
             self._cancel_nag(tag)
             return
         # Detach the handle that fired us (a no-op when the native timer already
@@ -278,6 +293,21 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         nag = self._s.nags.pop(tag, None)
         if nag and nag.cancel:
             nag.cancel()
+
+    @callback
+    def note_external_clear(self, tag: str) -> None:
+        """Stop nagging a reminder cleared elsewhere (Core's `clear` webhook push).
+
+        When the item is completed in the app, Core clears the notification; that
+        clear now also ends the local nag chain, so a handled reminder stops nagging
+        without waiting for a tap on the phone.
+        """
+        if not tag:
+            return
+        self._s.handled.add(tag)
+        self._cancel_nag(tag)
+        if tag in self._s.scheduled:
+            self._s.scheduled.pop(tag)()
 
     # --- action forwarding (slice 5) ---
     @callback

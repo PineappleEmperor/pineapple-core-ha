@@ -16,6 +16,7 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.pineapple_core.const import (
     CONF_API_TOKEN,
     CONF_BASE_URL,
+    CONF_MIRROR_ENTITIES,
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
     CONF_WINDOW_HOURS,
@@ -239,4 +240,5 @@ async def test_options_flow_persists_tunables(
     assert mock_config_entry.options == {
         CONF_POLL_INTERVAL: 10,
         CONF_WINDOW_HOURS: 6,
+        CONF_MIRROR_ENTITIES: [],  # optional, defaults to none
     }

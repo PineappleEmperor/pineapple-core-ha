@@ -10,10 +10,16 @@ DOMAIN = "pineapple_core"
 CONF_BASE_URL = "base_url"
 CONF_API_TOKEN = "api_token"  # noqa: S105 — a config-key name, not a secret value
 CONF_NOTIFY_TARGET = "notify_target"
+# Set at setup: the integration's own inbound webhook (Core pushes clears/helpers/
+# digest here) and, when Nabu Casa cloud is active, its public cloudhook URL.
+CONF_WEBHOOK_ID = "webhook_id"
+CONF_CLOUDHOOK_URL = "cloudhook_url"
 
 # Options (tunable after setup)
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_WINDOW_HOURS = "window_hours"
+# Entities whose numeric state is mirrored back to Core (HA → Core helper push).
+CONF_MIRROR_ENTITIES = "mirror_entities"
 
 # Defaults (notify_target has none — it's a per-install device, required in the flow)
 DEFAULT_POLL_INTERVAL = timedelta(minutes=5)
@@ -25,6 +31,8 @@ API_ACK = "/api/reminders/ack"
 # Capability webhook a tapped notification action is forwarded to (self-authing
 # via the single-use ?tok=, so no bearer token is attached).
 API_ACTION = "/api/webhook/action"
+# HA → Core helper mirror: a watched entity's numeric state is pushed here.
+API_HELPER = "/api/integrations/ha/helper"
 
 # The HA event a companion-app notification button raises when tapped.
 ACTION_EVENT = "mobile_app_notification_action"

@@ -30,7 +30,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up the diagnostic sensors."""
     coordinator = entry.runtime_data
-    async_add_entities([UpcomingCountSensor(coordinator), NextReminderSensor(coordinator)])
+    async_add_entities(
+        [
+            UpcomingCountSensor(coordinator),
+            NextReminderSensor(coordinator),
+            WebhookUrlSensor(coordinator),
+        ]
+    )
 
 
 class UpcomingCountSensor(PineappleCoreEntity, SensorEntity):
@@ -77,3 +83,17 @@ class NextReminderSensor(PineappleCoreEntity, SensorEntity):
         times = [dt_util.parse_datetime(r.fire_at) for r in (self.coordinator.data or [])]
         valid = [t for t in times if t is not None]
         self._attr_native_value = min(valid) if valid else None
+
+
+class WebhookUrlSensor(PineappleCoreEntity, SensorEntity):
+    """The inbound webhook URL to paste into Core's HA_WEBHOOK_URL.
+
+    Static (resolved once at setup), so it just reads the coordinator's stored URL.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: PineappleCoreCoordinator) -> None:
+        """Register under the `webhook_url` translation key."""
+        super().__init__(coordinator, "webhook_url")
+        self._attr_native_value = coordinator.webhook_url

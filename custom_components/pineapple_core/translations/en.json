@@ -38,11 +38,13 @@
         "title": "Pineapple Core options",
         "data": {
           "poll_interval": "Poll interval (minutes)",
-          "window_hours": "How far ahead to fetch (hours)"
+          "window_hours": "How far ahead to fetch (hours)",
+          "mirror_entities": "Entities to mirror to Core"
         },
         "data_description": {
           "poll_interval": "How often to re-sync the upcoming queue from Core.",
-          "window_hours": "Reminders further ahead than this aren't fetched yet."
+          "window_hours": "Reminders further ahead than this aren't fetched yet.",
+          "mirror_entities": "When these change to a numeric state, the value is pushed to Core (e.g. a bin input_number → logs the habit)."
         }
       }
     }
@@ -50,7 +52,8 @@
   "entity": {
     "sensor": {
       "upcoming_count": { "name": "Upcoming reminders" },
-      "next_reminder": { "name": "Next reminder" }
+      "next_reminder": { "name": "Next reminder" },
+      "webhook_url": { "name": "Inbound webhook URL" }
     },
     "binary_sensor": {
       "core_reachable": { "name": "Core reachable" }

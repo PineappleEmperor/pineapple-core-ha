@@ -8,7 +8,7 @@ from typing import Any
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .const import API_ACK, API_ACTION, API_UPCOMING, REQUEST_TIMEOUT
+from .const import API_ACK, API_ACTION, API_HELPER, API_UPCOMING, REQUEST_TIMEOUT
 
 
 class PineappleCoreError(Exception):
@@ -90,7 +90,9 @@ class PineappleCoreClient:
         Replaces the old HA automation that POSTed `mobile_app_notification_action`
         to the webhook: Core verifies the single-use `tok` and applies the domain
         action (log dose / complete todo / …). The `/api/webhook/` route
-        self-authenticates via the token, so no bearer is sent.
+        self-authenticates via the token, so no bearer is sent. Core's own clear is
+        left to run — it also dismisses the entity's sibling notifications, which the
+        integration's local single-tag clear does not.
         """
         try:
             async with (
@@ -101,6 +103,16 @@ class PineappleCoreClient:
         except (TimeoutError, ClientError) as err:
             msg = f"Could not forward action to Core: {err}"
             raise PineappleCoreError(msg) from err
+
+    async def async_send_helper(self, entity: str, value: float) -> None:
+        """Mirror a watched entity's numeric state back to Core (HA → Core helper).
+
+        Core maps the entity to a linked habit/todo via its helper link; an integral
+        value is sent as an int (Core's contract is 0|1|2). Replaces the
+        `callback - bins status to core` automation.
+        """
+        payload = int(value) if float(value).is_integer() else value
+        await self._request("POST", API_HELPER, json={"entity": entity, "value": payload})
 
     async def _request(
         self,

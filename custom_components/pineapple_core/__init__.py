@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
@@ -9,9 +10,17 @@ from homeassistant.const import Platform
 
 from .const import ACTION_EVENT
 from .coordinator import PineappleCoreCoordinator
+from .mirror import async_setup_mirror
+from .webhook import (
+    async_register_webhook,
+    async_remove_cloudhook,
+    async_unregister_webhook,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 type PineappleCoreConfigEntry = ConfigEntry[PineappleCoreCoordinator]
 
@@ -24,10 +33,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # Inbound webhook: Core pushes clears/helpers/digest here (replaces `notify - core`).
+    coordinator.webhook_url = await async_register_webhook(hass, entry)
+    entry.async_on_unload(lambda: async_unregister_webhook(hass, entry))
+    _LOGGER.info(
+        "Pineapple Core inbound webhook ready — set Core's HA_WEBHOOK_URL to: %s",
+        coordinator.webhook_url,
+    )
+
     # A tapped notification button forwards to Core + cancels the local nag chain.
     entry.async_on_unload(
         hass.bus.async_listen(ACTION_EVENT, coordinator.handle_action_event)
     )
+    # Mirror the configured HA entities' numeric state back to Core (replaces
+    # `callback - bins status to core`). Re-armed on options change via reload.
+    entry.async_on_unload(async_setup_mirror(hass, entry, coordinator.client))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
@@ -37,6 +57,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntr
     """Unload a config entry, cancelling every armed fire callback first."""
     entry.runtime_data.async_cancel_scheduled()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> None:
+    """On full removal, delete the cloudhook we created (reload keeps it)."""
+    await async_remove_cloudhook(hass, entry)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> None:

@@ -268,6 +268,42 @@ async def test_nag_repeats_until_max_then_stops(
     assert len(calls) == 3
 
 
+async def test_nag_chain_survives_feed_drop_after_ack(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A delivered reminder keeps nagging even after Core drops it from the feed.
+
+    Regression: delivery acks the reminder, so Core stops listing it — the local
+    nag chain must NOT be cancelled just because the tag left the feed, or nags
+    never fire (poll interval < nag interval).
+    """
+    fire_at = dt_util.utcnow() + timedelta(seconds=30)
+    reminder = _reminder("nag-live", fire_at, nag={"interval": "15m", "max": 3, "escalate": False})
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": [reminder]}}, headers=JSON_HEADERS)
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+    _register_notify(hass)
+
+    coordinator = await _setup(hass, mock_config_entry)
+    async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert "nag-live" in coordinator._s.nags
+
+    # Next poll: Core no longer lists it (we acked it). The chain must survive.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(UPCOMING_URL, json={"data": {"reminders": []}}, headers=JSON_HEADERS)
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert "nag-live" in coordinator._s.nags  # still nagging
+
+    # A Core `clear` push (item handled in the app) DOES stop it.
+    coordinator.note_external_clear("nag-live")
+    assert "nag-live" not in coordinator._s.nags
+    coordinator.async_cancel_scheduled()
+
+
 async def test_escalating_nag_raises_level(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

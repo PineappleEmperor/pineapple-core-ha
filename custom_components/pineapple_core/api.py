@@ -104,15 +104,23 @@ class PineappleCoreClient:
             msg = f"Could not forward action to Core: {err}"
             raise PineappleCoreError(msg) from err
 
-    async def async_send_helper(self, entity: str, value: float) -> None:
-        """Mirror a watched entity's numeric state back to Core (HA → Core helper).
+    async def async_send_helper(
+        self, entity: str, *, value: float | None = None, next_at: str | None = None
+    ) -> None:
+        """Mirror a watched entity back to Core (HA → Core helper).
 
-        Core maps the entity to a linked habit/todo via its helper link; an integral
-        value is sent as an int (Core's contract is 0|1|2). Replaces the
-        `callback - bins status to core` automation.
+        Sends `value` (an input_number done-state → logs the linked habit/todo) or
+        `next_at` (an externally-scheduled date → drives the item's reminder), matching
+        Core's helper contract. An integral value is sent as an int (Core expects
+        0|1|2). Replaces the `callback - bins status to core` AND `core_helper_schedule`
+        automations.
         """
-        payload = int(value) if float(value).is_integer() else value
-        await self._request("POST", API_HELPER, json={"entity": entity, "value": payload})
+        payload: dict[str, Any] = {"entity": entity}
+        if value is not None:
+            payload["value"] = int(value) if float(value).is_integer() else value
+        if next_at is not None:
+            payload["next_at"] = next_at
+        await self._request("POST", API_HELPER, json=payload)
 
     async def _request(
         self,

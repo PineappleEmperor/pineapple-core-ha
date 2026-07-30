@@ -91,3 +91,43 @@ async def test_unwatched_entity_is_ignored(
     await hass.async_block_till_done()
 
     assert not _helper_posts(aioclient_mock)
+
+
+async def test_iso_datetime_state_pushes_next_at(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A date-ish state (Ocado's ISO deadline) is pushed as next_at, not value."""
+    _stub(aioclient_mock)
+    await _setup_with_mirror(hass, entry_data, ["sensor.ocado_next_edit_deadline"])
+
+    hass.states.async_set("sensor.ocado_next_edit_deadline", "2026-07-20T18:00:00+00:00")
+    await hass.async_block_till_done()
+
+    posts = _helper_posts(aioclient_mock)
+    assert len(posts) == 1
+    assert posts[0][2] == {
+        "entity": "sensor.ocado_next_edit_deadline",
+        "next_at": "2026-07-20T18:00:00+00:00",
+    }
+
+
+async def test_bins_next_collection_attribute_pushes_iso_next_at(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """UKBinCollectionData: state is 'In N days', the DD/MM/YYYY date is in the
+    next_collection attribute → mirrored as an ISO next_at."""
+    _stub(aioclient_mock)
+    await _setup_with_mirror(hass, entry_data, ["sensor.home_refuse_bin"])
+
+    hass.states.async_set(
+        "sensor.home_refuse_bin", "In 3 days", {"next_collection": "20/07/2026"}
+    )
+    await hass.async_block_till_done()
+
+    posts = _helper_posts(aioclient_mock)
+    assert len(posts) == 1
+    assert posts[0][2] == {"entity": "sensor.home_refuse_bin", "next_at": "2026-07-20"}

@@ -54,10 +54,15 @@ automations can be deleted:
   POSTed to `/api/integrations/ha/helper`.
 - **Action taps** are already forwarded to Core's capability webhook by the integration.
 
-**Cutover order:** install 0.3.0 → copy the webhook URL into Core's `HA_WEBHOOK_URL` (both
-surfaces) → add any mirror entities → delete the three automations. Date-pushing
-`rest_command`s (bin collection dates, Ocado deadline) stay — they set `next_at` on Core
-and aren't part of the retired bridge.
+The mirror handles **both** halves of the old rest_commands:
+- **numeric** state (`input_number` done-state) → `{entity, value}` — logs the linked habit/todo.
+- **date** state or a `next_collection` attribute → `{entity, next_at}` — Ocado's ISO deadline
+  is read from the state; UKBinCollectionData's `DD/MM/YYYY` `next_collection` attribute is read
+  and normalized to ISO. So `core_helper_value` **and** `core_helper_schedule` both retire.
+
+**Cutover order:** install the latest → copy the webhook URL into Core's `HA_WEBHOOK_URL`
+(both surfaces) → add the bin/Ocado entities under *Entities to mirror to Core* → delete the
+three bridge automations **and** the two `core_helper_*` rest_commands + their trigger automations.
 
 ## Status
 

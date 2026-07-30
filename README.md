@@ -19,7 +19,8 @@ remembers what it delivered and retries only the ack.
 ## What it creates
 
 - A **Pineapple Core** service device with diagnostics: *Upcoming reminders*, *Next
-  reminder*, and *Core reachable*.
+  reminder*, *Core reachable*, and *Inbound webhook URL* (the value to paste into Core's
+  `HA_WEBHOOK_URL` — see the cutover below).
 
 ## Setup
 
@@ -27,17 +28,38 @@ remembers what it delivered and retries only the ack.
 2. In Home Assistant → **Settings → Devices & Services → Add Integration → Pineapple Core**.
 3. Enter your Core **base URL**, the **token**, and the **notify service** to fire
    (e.g. `mobile_app_your_phone`).
-4. Tune the **poll interval** and **look-ahead window** any time via the integration's
-   *Configure* (options).
+4. Tune the **poll interval**, **look-ahead window**, and **entities to mirror to Core**
+   any time via the integration's *Configure* (options).
 
 ## How delivery works
 
 - Core materialises upcoming reminders (habits, todos, plants, meds) with fresh action
   tokens and serves them at `GET /api/reminders/upcoming`.
-- This integration schedules + fires them locally and posts `POST /api/reminders/ack`.
+- This integration schedules + fires them locally, nags on Core's policy, and posts
+  `POST /api/reminders/ack`.
 - Core's own worker firing is disabled once delivery is handed to Home Assistant.
+
+## Sole bridge — retiring the hand-written automations
+
+From **0.3.0** the integration is the *only* bridge between Core and Home Assistant, so
+the old `notify - core`, `callback - core`, and `callback - bins status to core`
+automations can be deleted:
+
+- **Core → HA push** (clears, `input_number` sets, the daily digest): the integration
+  registers **its own webhook** (and a Nabu Casa cloudhook when cloud is active). Copy the
+  *Inbound webhook URL* diagnostic into Core's `HA_WEBHOOK_URL` on **both** the worker and
+  Pages. Core keeps POSTing there; the integration routes each `event` to the right service.
+- **HA → Core helper mirror** (bin `input_number` done-state → logs the habit): add those
+  entities under *Configure → Entities to mirror to Core*. On a numeric change the value is
+  POSTed to `/api/integrations/ha/helper`.
+- **Action taps** are already forwarded to Core's capability webhook by the integration.
+
+**Cutover order:** install 0.3.0 → copy the webhook URL into Core's `HA_WEBHOOK_URL` (both
+surfaces) → add any mirror entities → delete the three automations. Date-pushing
+`rest_command`s (bin collection dates, Ocado deadline) stay — they set `next_at` on Core
+and aren't part of the retired bridge.
 
 ## Status
 
-Early development (0.1.0). See `custom_components/pineapple_core/quality_scale.yaml` for
-the road to Platinum.
+Delivery + sole-bridge complete (0.3.0). See `custom_components/pineapple_core/quality_scale.yaml`
+for the road to Platinum.

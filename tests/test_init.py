@@ -38,8 +38,8 @@ async def test_setup_entry_reaches_loaded(
     entities = er.async_entries_for_config_entry(
         er.async_get(hass), mock_config_entry.entry_id
     )
-    # 3 sensors (upcoming_count, next_reminder, webhook_url) + 1 binary_sensor
-    assert len(entities) == 4
+    # 2 sensors (upcoming_count, next_reminder) + 1 binary_sensor (core_reachable)
+    assert len(entities) == 3
 
 
 async def test_unload_entry(

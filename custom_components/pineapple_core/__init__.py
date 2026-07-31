@@ -36,10 +36,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry
     # Inbound webhook: Core pushes clears/helpers/digest here (replaces `notify - core`).
     coordinator.webhook_url = await async_register_webhook(hass, entry)
     entry.async_on_unload(lambda: async_unregister_webhook(hass, entry))
-    _LOGGER.info(
-        "Pineapple Core inbound webhook ready — set Core's HA_WEBHOOK_URL to: %s",
-        coordinator.webhook_url,
-    )
+    _LOGGER.info("Pineapple Core inbound webhook registered")
+    # The URL is a Nabu Casa cloudhook — a secret. Emit it at DEBUG only (never a
+    # visible sensor), so it can be retrieved from logs when needed without exposing it.
+    _LOGGER.debug("Inbound webhook URL (for Core's HA_WEBHOOK_URL): %s", coordinator.webhook_url)
 
     # A tapped notification button forwards to Core + cancels the local nag chain.
     entry.async_on_unload(

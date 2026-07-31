@@ -39,12 +39,14 @@
         "data": {
           "poll_interval": "Poll interval (minutes)",
           "window_hours": "How far ahead to fetch (hours)",
-          "mirror_entities": "Entities to mirror to Core"
+          "mirror_entities": "Entities to mirror to Core",
+          "mirror_aliases": "Mirror aliases (advanced)"
         },
         "data_description": {
           "poll_interval": "How often to re-sync the upcoming queue from Core.",
           "window_hours": "Reminders further ahead than this aren't fetched yet.",
-          "mirror_entities": "When these change to a numeric state, the value is pushed to Core (e.g. a bin input_number → logs the habit)."
+          "mirror_entities": "When these change, their value (numeric) or date (next_at) is pushed to Core — e.g. a bin input_number logs the habit, a bin sensor's next_collection drives its reminder.",
+          "mirror_aliases": "One 'source=target' per line: push a mirrored entity under a different Core helper key. E.g. sensor.home_refuse_bin=input_number.rubbish_alert so the bin's date feeds the same helper as its done-state."
         }
       }
     }
@@ -52,8 +54,7 @@
   "entity": {
     "sensor": {
       "upcoming_count": { "name": "Upcoming reminders" },
-      "next_reminder": { "name": "Next reminder" },
-      "webhook_url": { "name": "Inbound webhook URL" }
+      "next_reminder": { "name": "Next reminder" }
     },
     "binary_sensor": {
       "core_reachable": { "name": "Core reachable" }

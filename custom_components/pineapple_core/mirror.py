@@ -23,7 +23,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_MIRROR_ENTITIES
+from .const import CONF_MIRROR_ALIASES, CONF_MIRROR_ENTITIES
 
 if TYPE_CHECKING:
     from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant
@@ -34,6 +34,16 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _IGNORE = {None, "", "unknown", "unavailable"}
+
+
+def _parse_aliases(text: str) -> dict[str, str]:
+    """Parse `source=target` lines into a {source_entity: core_key} map."""
+    out: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        source, sep, target = line.partition("=")
+        if sep and (s := source.strip()) and (t := target.strip()):
+            out[s] = t
+    return out
 
 
 def _to_iso(raw: str) -> str | None:
@@ -70,19 +80,23 @@ def async_setup_mirror(
     entities: list[str] = entry.options.get(CONF_MIRROR_ENTITIES, [])
     if not entities:
         return lambda: None
+    aliases = _parse_aliases(entry.options.get(CONF_MIRROR_ALIASES, ""))
 
     @callback
     def _on_change(event: Event[EventStateChangedData]) -> None:
         new = event.data.get("new_state")
         if new is None or new.state in _IGNORE:
             return
+        # Push under the aliased Core key when configured, else the entity's own id —
+        # so a bin date sensor can feed the same helper as its done-state input_number.
+        key = aliases.get(new.entity_id, new.entity_id)
         # Numeric → a done-state value.
         try:
             value = float(new.state)
         except (TypeError, ValueError):
             value = None
         if value is not None:
-            hass.async_create_task(_push(client, new.entity_id, value=value))
+            hass.async_create_task(_push(client, key, value=value))
             return
         # Date-ish state (Ocado) → next_at; else the bins date lives in an attribute.
         iso = _to_iso(new.state)
@@ -90,7 +104,7 @@ def async_setup_mirror(
             raw = new.attributes.get("next_collection")
             iso = _to_iso(str(raw)) if raw not in _IGNORE else None
         if iso is not None:
-            hass.async_create_task(_push(client, new.entity_id, next_at=iso))
+            hass.async_create_task(_push(client, key, next_at=iso))
 
     return async_track_state_change_event(hass, entities, _on_change)
 

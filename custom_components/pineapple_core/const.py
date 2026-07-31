@@ -18,12 +18,9 @@ CONF_CLOUDHOOK_URL = "cloudhook_url"
 # Options (tunable after setup)
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_WINDOW_HOURS = "window_hours"
-# Entities whose numeric state is mirrored back to Core (HA → Core helper push).
+# Entities whose state is mirrored back to Core (HA → Core helper push). Each is
+# pushed under its own id; Core maps it to a habit (ha_helper / ha_date_helper).
 CONF_MIRROR_ENTITIES = "mirror_entities"
-# Optional "source=target" lines: a mirrored entity is pushed to Core UNDER the
-# target key instead of its own id. Lets a bin date SENSOR feed the same Core
-# helper (input_number) as its done-state, so one habit's ha_helper gets both.
-CONF_MIRROR_ALIASES = "mirror_aliases"
 
 # Defaults (notify_target has none — it's a per-install device, required in the flow)
 DEFAULT_POLL_INTERVAL = timedelta(minutes=5)

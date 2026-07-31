@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pineapple_core.const import CONF_MIRROR_ALIASES, CONF_MIRROR_ENTITIES, DOMAIN
+from custom_components.pineapple_core.const import CONF_MIRROR_ENTITIES, DOMAIN
 
 from .conftest import ACK_URL, BASE_URL, HELPER_URL, JSON_HEADERS, UPCOMING_URL
 
@@ -33,11 +33,11 @@ def _helper_posts(aioclient_mock: AiohttpClientMocker) -> list[Any]:
 
 
 async def _setup_with_mirror(
-    hass: HomeAssistant, entry_data: dict[str, Any], entities: list[str], aliases: str = ""
+    hass: HomeAssistant, entry_data: dict[str, Any], entities: list[str]
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN, title="Pineapple Core", data=entry_data,
-        options={CONF_MIRROR_ENTITIES: entities, CONF_MIRROR_ALIASES: aliases}, unique_id=BASE_URL,
+        options={CONF_MIRROR_ENTITIES: entities}, unique_id=BASE_URL,
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -131,28 +131,3 @@ async def test_bins_next_collection_attribute_pushes_iso_next_at(
     posts = _helper_posts(aioclient_mock)
     assert len(posts) == 1
     assert posts[0][2] == {"entity": "sensor.home_refuse_bin", "next_at": "2026-07-20"}
-
-
-async def test_alias_pushes_under_the_mapped_core_key(
-    hass: HomeAssistant,
-    entry_data: dict[str, Any],
-    aioclient_mock: AiohttpClientMocker,
-) -> None:
-    """An alias pushes the bin sensor's date under the input_number helper key, so one
-    habit's ha_helper gets both its done-state and its collection date."""
-    _stub(aioclient_mock)
-    await _setup_with_mirror(
-        hass,
-        entry_data,
-        ["sensor.home_refuse_bin"],
-        aliases="sensor.home_refuse_bin=input_number.rubbish_alert",
-    )
-
-    hass.states.async_set(
-        "sensor.home_refuse_bin", "In 3 days", {"next_collection": "20/07/2026"}
-    )
-    await hass.async_block_till_done()
-
-    posts = _helper_posts(aioclient_mock)
-    assert len(posts) == 1
-    assert posts[0][2] == {"entity": "input_number.rubbish_alert", "next_at": "2026-07-20"}

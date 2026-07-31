@@ -26,7 +26,13 @@ from homeassistant.util import dt as dt_util
 from .const import CONF_MIRROR_ENTITIES
 
 if TYPE_CHECKING:
-    from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant
+    from homeassistant.core import (
+        CALLBACK_TYPE,
+        Event,
+        EventStateChangedData,
+        HomeAssistant,
+        State,
+    )
 
     from . import PineappleCoreConfigEntry
     from .api import PineappleCoreClient
@@ -72,31 +78,38 @@ def async_setup_mirror(
         return lambda: None
 
     @callback
-    def _on_change(event: Event[EventStateChangedData]) -> None:
-        new = event.data.get("new_state")
-        if new is None or new.state in _IGNORE:
+    def _sync(state: State | None) -> None:
+        """Push one entity's state to Core under its own id (Core maps it to a habit)."""
+        if state is None or state.state in _IGNORE:
             return
-        # Push each entity under its OWN id — the integration mirrors HA faithfully;
-        # Core holds the entity→habit mapping (ha_helper for state, ha_date_helper
-        # for the date), so there's no remapping to do here.
-        entity = new.entity_id
+        entity = state.entity_id
         # Numeric → a done-state value.
         try:
-            value = float(new.state)
+            value = float(state.state)
         except (TypeError, ValueError):
             value = None
         if value is not None:
             hass.async_create_task(_push(client, entity, value=value))
             return
         # Date-ish state (Ocado) → next_at; else the bins date lives in an attribute.
-        iso = _to_iso(new.state)
+        iso = _to_iso(state.state)
         if iso is None:
-            raw = new.attributes.get("next_collection")
+            raw = state.attributes.get("next_collection")
             iso = _to_iso(str(raw)) if raw not in _IGNORE else None
         if iso is not None:
             hass.async_create_task(_push(client, entity, next_at=iso))
 
-    return async_track_state_change_event(hass, entities, _on_change)
+    @callback
+    def _on_change(event: Event[EventStateChangedData]) -> None:
+        _sync(event.data.get("new_state"))
+
+    unsub = async_track_state_change_event(hass, entities, _on_change)
+    # Initial sync: reflect each watched entity's CURRENT state in Core right away,
+    # not only on its next change — so an input_number that hasn't moved since setup
+    # (or a sensor that won't change for a while) is already mirrored.
+    for entity_id in entities:
+        _sync(hass.states.get(entity_id))
+    return unsub
 
 
 async def _push(

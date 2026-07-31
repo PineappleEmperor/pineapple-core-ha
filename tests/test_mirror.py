@@ -63,6 +63,23 @@ async def test_numeric_state_change_pushes_helper(
     assert posts[0][2] == {"entity": "input_number.rubbish_alert", "value": 1}
 
 
+async def test_initial_sync_pushes_current_state_on_setup(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A watched entity's CURRENT state is mirrored at setup, not only on change —
+    so an input_number that hasn't moved since setup is still reflected in Core."""
+    _stub(aioclient_mock)
+    hass.states.async_set("input_number.rubbish_alert", "1")  # already set BEFORE setup
+    await _setup_with_mirror(hass, entry_data, ["input_number.rubbish_alert"])
+    await hass.async_block_till_done()
+
+    posts = _helper_posts(aioclient_mock)
+    assert len(posts) == 1
+    assert posts[0][2] == {"entity": "input_number.rubbish_alert", "value": 1}
+
+
 async def test_non_numeric_state_is_ignored(
     hass: HomeAssistant,
     entry_data: dict[str, Any],

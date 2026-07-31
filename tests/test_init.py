@@ -15,6 +15,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
+from custom_components.pineapple_core.const import CONF_MIRROR_ENTITIES, DOMAIN
 from custom_components.pineapple_core.coordinator import PineappleCoreCoordinator
 
 from .conftest import UPCOMING_URL
@@ -38,8 +39,48 @@ async def test_setup_entry_reaches_loaded(
     entities = er.async_entries_for_config_entry(
         er.async_get(hass), mock_config_entry.entry_id
     )
-    # 2 sensors (upcoming_count, next_reminder) + 1 binary_sensor (core_reachable)
-    assert len(entities) == 3
+    # 3 sensors (upcoming_count, next_reminder, mirrored_count) + 1 binary_sensor
+    assert len(entities) == 4
+
+
+async def test_setup_removes_orphaned_webhook_url_sensor(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_upcoming: Callable[[list], None],
+) -> None:
+    """The removed 'Inbound webhook URL' sensor is cleaned from the registry on setup."""
+    mock_upcoming([])
+    mock_config_entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    uid = f"{mock_config_entry.entry_id}_webhook_url"
+    registry.async_get_or_create("sensor", DOMAIN, uid, config_entry=mock_config_entry)
+    assert registry.async_get_entity_id("sensor", DOMAIN, uid)  # the stale entity exists
+
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get_entity_id("sensor", DOMAIN, uid) is None  # cleaned up
+
+
+async def test_mirrored_count_sensor_reflects_option(
+    hass: HomeAssistant,
+    entry_data: dict,
+    mock_upcoming: Callable[[list], None],
+) -> None:
+    """The 'Mirrored to Core' sensor shows how many entities are configured to mirror."""
+    mock_upcoming([])
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Pineapple Core", data=entry_data,
+        options={CONF_MIRROR_ENTITIES: ["sensor.a", "input_number.b", "sensor.c"]},
+        unique_id="https://core.test",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.pineapple_core_mirrored_to_core")
+    assert state is not None
+    assert state.state == "3"
 
 
 async def test_unload_entry(

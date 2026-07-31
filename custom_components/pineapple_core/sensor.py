@@ -13,6 +13,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 
+from .const import CONF_MIRROR_ENTITIES
 from .entity import PineappleCoreEntity
 
 if TYPE_CHECKING:
@@ -30,7 +31,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up the diagnostic sensors."""
     coordinator = entry.runtime_data
-    async_add_entities([UpcomingCountSensor(coordinator), NextReminderSensor(coordinator)])
+    mirror_count = len(entry.options.get(CONF_MIRROR_ENTITIES, []))
+    async_add_entities(
+        [
+            UpcomingCountSensor(coordinator),
+            NextReminderSensor(coordinator),
+            MirroredCountSensor(coordinator, mirror_count),
+        ]
+    )
 
 
 class UpcomingCountSensor(PineappleCoreEntity, SensorEntity):
@@ -77,3 +85,19 @@ class NextReminderSensor(PineappleCoreEntity, SensorEntity):
         times = [dt_util.parse_datetime(r.fire_at) for r in (self.coordinator.data or [])]
         valid = [t for t in times if t is not None]
         self._attr_native_value = min(valid) if valid else None
+
+
+class MirroredCountSensor(PineappleCoreEntity, SensorEntity):
+    """How many HA entities the integration mirrors (pushes) to Core.
+
+    Static per config — reflects the 'Entities to mirror to Core' option; a reload
+    on options change re-reads it.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: PineappleCoreCoordinator, count: int) -> None:
+        """Register under the `mirrored_count` translation key with the entity count."""
+        super().__init__(coordinator, "mirrored_count")
+        self._attr_native_value = count

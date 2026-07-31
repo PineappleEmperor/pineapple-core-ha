@@ -56,6 +56,9 @@
       },
       "next_reminder": {
         "name": "Next reminder"
+      },
+      "mirrored_count": {
+        "name": "Mirrored to Core"
       }
     },
     "binary_sensor": {

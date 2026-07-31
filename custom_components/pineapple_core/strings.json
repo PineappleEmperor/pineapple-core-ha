@@ -52,7 +52,8 @@
   "entity": {
     "sensor": {
       "upcoming_count": { "name": "Upcoming reminders" },
-      "next_reminder": { "name": "Next reminder" }
+      "next_reminder": { "name": "Next reminder" },
+      "mirrored_count": { "name": "Mirrored to Core" }
     },
     "binary_sensor": {
       "core_reachable": { "name": "Core reachable" }

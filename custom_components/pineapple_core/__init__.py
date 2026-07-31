@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
+from homeassistant.helpers import entity_registry as er
 
-from .const import ACTION_EVENT
+from .const import ACTION_EVENT, DOMAIN
 from .coordinator import PineappleCoreCoordinator
 from .mirror import async_setup_mirror
 from .webhook import (
@@ -29,6 +30,14 @@ PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> bool:
     """Set up Pineapple Core from a config entry."""
+    # One-time cleanup: the old "Inbound webhook URL" sensor was removed (it exposed
+    # a secret cloudhook), but HA keeps its registry entry as an orphaned
+    # 'unavailable' entity the user can't easily delete. Drop it here.
+    registry = er.async_get(hass)
+    stale = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_webhook_url")
+    if stale:
+        registry.async_remove(stale)
+
     coordinator = PineappleCoreCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

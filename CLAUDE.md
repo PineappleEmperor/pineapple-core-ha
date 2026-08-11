@@ -19,6 +19,34 @@ coordinator, services…), invoke the `ha-integration` skill. Re-invoke it after
 - `config_flow.py` — base URL + token + notify target; options for poll interval + window; reauth.
 - `sensor.py` / `binary_sensor.py` — diagnostics (queue size, next reminder, Core reachable).
 
+## Releasing
+
+**Publish the drafted release in the GitHub UI. Do NOT push a `v*.*.*` tag.**
+
+`hacs.json` sets `zip_release: true`, so HACS installs the `pineapple_core.zip`
+asset and fails with `Could not download` when it's missing. That asset is built by
+`release.yml`, which triggers on `release: published` — and GitHub **suppresses**
+that event for a release created by `GITHUB_TOKEN`. Pushing a tag runs
+`semantic_release.yml`, which does exactly that, so `release.yml` never fires and
+the release ships with no asset. Both v0.4.0 and the first v0.4.1 were published
+this way and had to be redone.
+
+1. Merge the PR (its last commit bumps `manifest.json`).
+2. Release Drafter has a draft ready on push to main — check its tag matches the
+   manifest version, since the version-resolver reads PR labels and a `feat:` PR
+   drafts a minor bump.
+3. Publish it from the UI. A human token fires `release: published`, `release.yml`
+   builds the zip, and the tag is created at the target commit.
+4. Verify: `gh release view vX.Y.Z --json assets -q '[.assets[].name]'` →
+   `["pineapple_core.zip"]`.
+
+No draft to publish (deleted, or consumed by an earlier release)? Create one, then
+publish it in the UI — `--target` needs a branch or a full SHA, not an abbreviated one:
+
+```
+gh release create vX.Y.Z --draft --target main --generate-notes --title vX.Y.Z
+```
+
 ## Conventions
 
 - Conventional Commits; single version bump as the last commit before merge.

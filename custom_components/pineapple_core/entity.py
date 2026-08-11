@@ -19,9 +19,12 @@ class PineappleCoreEntity(CoordinatorEntity[PineappleCoreCoordinator]):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry_id}_{key}"
         self._attr_translation_key = key
+        # Named from the entry title (the Core instance's own label), so two
+        # entries don't produce two identically named devices.
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry_id)},
-            name="Pineapple Core",
+            name=coordinator.device_name,
             manufacturer="Pineapple Core",
+            configuration_url=coordinator.base_url,
             entry_type=DeviceEntryType.SERVICE,
         )

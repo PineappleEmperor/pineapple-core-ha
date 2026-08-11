@@ -12,24 +12,25 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pineapple_core.const import CONF_WEBHOOK_ID
+from custom_components.pineapple_core.const import CONF_WEBHOOK_ID, DOMAIN
+from custom_components.pineapple_core.coordinator import PineappleCoreCoordinator
 from custom_components.pineapple_core.webhook import async_dispatch
 
-from .conftest import NOTIFY_TARGET
+from .conftest import BASE_URL, NOTIFY_TARGET
 
 if TYPE_CHECKING:
     from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 
-class _StubCoordinator:
-    """Just what async_dispatch touches: a notify target + clear→nag-cancel hook."""
-
-    def __init__(self, target: str) -> None:
-        self.notify_target = target
-        self.cleared: list[str] = []
-
-    def note_external_clear(self, tag: str) -> None:
-        self.cleared.append(tag)
+def _coordinator(
+    hass: HomeAssistant, entry_data: dict, *, base_url: str = BASE_URL
+) -> PineappleCoreCoordinator:
+    """A real coordinator for dispatch tests — constructing one performs no I/O."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Core", data={**entry_data, "base_url": base_url}
+    )
+    entry.add_to_hass(hass)
+    return PineappleCoreCoordinator(hass, entry)
 
 
 def _capture(hass: HomeAssistant, domain: str, service: str) -> list[ServiceCall]:
@@ -43,10 +44,12 @@ def _capture(hass: HomeAssistant, domain: str, service: str) -> list[ServiceCall
     return calls
 
 
-async def test_dispatch_helper_sets_input_number(hass: HomeAssistant) -> None:
+async def test_dispatch_helper_sets_input_number(
+    hass: HomeAssistant, entry_data: dict
+) -> None:
     """A `helper` push calls input_number.set_value with the entity + value."""
     calls = _capture(hass, "input_number", "set_value")
-    coord = _StubCoordinator(NOTIFY_TARGET)
+    coord = _coordinator(hass, entry_data)
     await async_dispatch(
         hass, coord, {"event": "helper", "entity": "input_number.bin", "value": 1}
     )
@@ -55,10 +58,12 @@ async def test_dispatch_helper_sets_input_number(hass: HomeAssistant) -> None:
     assert calls[0].data == {"entity_id": "input_number.bin", "value": 1}
 
 
-async def test_dispatch_reminder_and_clear_and_digest_notify(hass: HomeAssistant) -> None:
+async def test_dispatch_reminder_and_clear_and_digest_notify(
+    hass: HomeAssistant, entry_data: dict
+) -> None:
     """clear/reminder/digest each fire the notify target; a clear also cancels nags."""
     calls = _capture(hass, "notify", NOTIFY_TARGET)
-    coord = _StubCoordinator(NOTIFY_TARGET)
+    coord = _coordinator(hass, entry_data)
     await async_dispatch(
         hass, coord, {"event": "reminder", "title": "T", "message": "M", "data": {"tag": "x"}}
     )
@@ -73,17 +78,41 @@ async def test_dispatch_reminder_and_clear_and_digest_notify(hass: HomeAssistant
     await hass.async_block_till_done()
     # blocking=False notify calls complete as tasks, so assert contents, not order.
     assert sorted(c.data["message"] for c in calls) == sorted(["M", "clear_notification", "3 due"])
-    assert coord.cleared == ["rem-9"]  # the clear stopped that tag's nag chain
+    # Pushed tags are namespaced too, so the clear dismisses the tag we sent under.
+    assert sorted(c.data["data"].get("tag", "") for c in calls) == ["", "core_rem-9", "core_x"]
+    assert "rem-9" in coord._s.handled  # the clear stopped that tag's nag chain
 
 
-async def test_dispatch_unknown_event_is_ignored(hass: HomeAssistant) -> None:
+async def test_dispatch_unknown_event_is_ignored(
+    hass: HomeAssistant, entry_data: dict
+) -> None:
     """An unrecognised event triggers no service call."""
     notify = _capture(hass, "notify", NOTIFY_TARGET)
     helper = _capture(hass, "input_number", "set_value")
-    await async_dispatch(hass, _StubCoordinator(NOTIFY_TARGET), {"event": "mystery"})
+    await async_dispatch(hass, _coordinator(hass, entry_data), {"event": "mystery"})
     await hass.async_block_till_done()
     assert not notify
     assert not helper
+
+
+async def test_pushed_reminder_actions_are_claimed_by_this_entry(
+    hass: HomeAssistant, entry_data: dict
+) -> None:
+    """A Core-pushed reminder's action tokens become forwardable by this entry only."""
+    _capture(hass, "notify", NOTIFY_TARGET)
+    coord = _coordinator(hass, entry_data)
+    await async_dispatch(
+        hass,
+        coord,
+        {
+            "event": "reminder",
+            "title": "T",
+            "message": "M",
+            "data": {"tag": "push-1", "actions": [{"action": "PTOK", "title": "Done"}]},
+        },
+    )
+    await hass.async_block_till_done()
+    assert coord._s.action_tags.get("PTOK") == "push-1"
 
 
 async def test_setup_registers_webhook_and_stores_id(

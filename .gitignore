@@ -1,8 +1,7 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
-venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -11,6 +10,18 @@ htmlcov/
 dist/
 build/
 *.zip
+
+# Environments
+.venv/
+venv/
+
+# Home Assistant test/dev artefacts
+.storage/
+home-assistant.log*
+home-assistant_v2.db*
+
 .DS_Store
-# Local, environment-specific notes (never commit a home's layout)
+
+# Local, environment-specific notes that must never be committed — e.g. the
+# device map used by Mode 5 log triage, which contains a home's IP/device layout.
 device_map.md

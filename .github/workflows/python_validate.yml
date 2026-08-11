@@ -25,3 +25,13 @@ jobs:
         run: ruff check custom_components/
       - name: Pyright
         run: python -m pyright custom_components/
+      - name: Pytest
+        run: |
+          if [ ! -d tests ]; then
+            echo "::warning::no tests/ directory - quality_scale rules marked 'done' are unproven"
+          elif [ ! -f requirements.test.txt ]; then
+            echo "::error::tests/ exists but requirements.test.txt is missing"
+            exit 1
+          else
+            pytest tests/ -q
+          fi

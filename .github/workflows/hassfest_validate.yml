@@ -7,9 +7,18 @@ on:
   schedule:
     - cron: "0 0 * * *"
 
+# hassfest is pinned to @master deliberately — that is the ref Home Assistant
+# documents, and it must track core's current manifest rules to be worth running.
+# Same trade-off and same mitigation as hacs_validate.yml: a mutable ref
+# Dependabot cannot bump, so cap the blast radius instead.
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: home-assistant/actions/hassfest@master

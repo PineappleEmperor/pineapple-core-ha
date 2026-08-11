@@ -35,12 +35,6 @@ HELPER_URL = f"{BASE_URL}/api/integrations/ha/helper"
 JSON_HEADERS = {"content-type": "application/json"}
 
 
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
-    """Load `custom_components/` for every test (required by phacc)."""
-    return
-
-
 @pytest.fixture
 def entry_data() -> dict[str, Any]:
     """The `entry.data` a fully configured Pineapple Core entry stores."""

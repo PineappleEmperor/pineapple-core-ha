@@ -50,7 +50,7 @@ async def test_user_step_success_creates_entry(
     await hass.async_block_till_done()
 
     assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Pineapple Core"
+    assert result.get("title") == "Core"  # first host label of https://core.test
     data = result["data"]
     assert data[CONF_BASE_URL] == BASE_URL
     assert data[CONF_API_TOKEN] == API_TOKEN

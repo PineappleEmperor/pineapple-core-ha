@@ -72,19 +72,17 @@ async def async_dispatch(
         )
         return
     if event in ("clear", "reminder", "digest"):
+        payload: dict[str, Any] = data.get("data") or {}
         # A clear is an app-side "handled" signal — also end the local nag chain for
         # that tag, so completing an item in the app stops its nagging.
         if event == "clear":
-            coordinator.note_external_clear((data.get("data") or {}).get("tag", ""))
-        await hass.services.async_call(
-            "notify",
-            coordinator.notify_target,
-            {
-                "title": data.get("title", ""),
-                "message": data.get("message", ""),
-                "data": data.get("data", {}),
-            },
-            blocking=False,
+            coordinator.note_external_clear(payload.get("tag", ""))
+        else:
+            # Claim this push's action tokens: a tap is a global event, so the
+            # entry that sent the notification must be the one that forwards it.
+            coordinator.note_actions(payload.get("tag", ""), payload)
+        await coordinator.async_notify(
+            data.get("title", ""), data.get("message", ""), payload, blocking=False
         )
         return
     _LOGGER.debug("Ignoring webhook with unknown event %r", event)

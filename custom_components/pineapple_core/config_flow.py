@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_WINDOW_HOURS,
     DOMAIN,
 )
+from .helpers import instance_title
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -76,7 +77,7 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
             errors = await self._probe(base_url, user_input[CONF_API_TOKEN])
             if not errors:
                 return self.async_create_entry(
-                    title="Pineapple Core",
+                    title=instance_title(base_url),
                     data={**user_input, CONF_BASE_URL: base_url},
                 )
         return self.async_show_form(

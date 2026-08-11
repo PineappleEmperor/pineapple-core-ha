@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_WINDOW_HOURS,
     DOMAIN,
 )
+from .helpers import instance_label
 
 if TYPE_CHECKING:
     from homeassistant.core import Event
@@ -45,6 +46,11 @@ _LOGGER = logging.getLogger(__name__)
 # reminder climbs one rung per repeat when its policy is `escalate`.
 _LEVELS = ("passive", "active", "time-sensitive", "critical")
 
+# Cap on remembered action token → tag pairs. The map is what proves a tapped
+# action belongs to THIS entry, so it must outlive the feed (a tap can land long
+# after Core dropped the reminder); a FIFO cap bounds it instead.
+_MAX_ACTION_TOKENS = 200
+
 
 def _interval_seconds(interval: str | None) -> int | None:
     """Parse a Core nag interval (`"15m"`, `"1h"`) into seconds, or None."""
@@ -55,6 +61,17 @@ def _interval_seconds(interval: str | None) -> int | None:
         return None
     n = int(m.group(1))
     return n * (3600 if m.group(2) == "h" else 60) or None
+
+
+def _payload(reminder: Reminder, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build a reminder's notification data, guaranteed to carry its dedup tag.
+
+    Dismissal (`clear_notification`) matches on `data.tag`, so a reminder whose
+    Core payload omits it could never be dismissed.
+    """
+    out = dict(reminder.data if data is None else data)
+    out.setdefault("tag", reminder.tag)
+    return out
 
 
 def _escalated(data: dict[str, Any], steps: int) -> dict[str, Any]:
@@ -116,12 +133,15 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             update_interval=timedelta(minutes=interval) if interval else DEFAULT_POLL_INTERVAL,
             always_update=False,
         )
+        self.base_url: str = entry.data[CONF_BASE_URL]
         self.client = PineappleCoreClient(
             async_get_clientsession(hass),
-            entry.data[CONF_BASE_URL],
+            self.base_url,
             entry.data[CONF_API_TOKEN],
         )
         self.entry_id: str = entry.entry_id
+        self.device_name: str = entry.title
+        self._tag_prefix: str = f"{instance_label(self.base_url)}_"
         self._notify_target: str = entry.data[CONF_NOTIFY_TARGET]
         self._window_hours: int = entry.options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS)
         # The integration's own inbound webhook URL (set at setup) — surfaced on a
@@ -181,13 +201,13 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
         A tag with a live nag chain is kept regardless of the feed — the chain runs
         locally after we've acked the reminder away, and it still needs its dedup
-        memory + action-token map until it's stopped.
+        memory until it's stopped. `action_tags` is deliberately not pruned here:
+        it is the proof a tapped token is ours, and a tap can land long after Core
+        dropped the reminder, so it is FIFO-capped instead.
         """
         keep = set(feed) | set(self._s.pending_acks) | set(self._s.nags)
         self._s.fired = {t for t in self._s.fired if t in keep}
         self._s.handled = {t for t in self._s.handled if t in feed}
-        live = keep | self._s.handled
-        self._s.action_tags = {tok: tag for tok, tag in self._s.action_tags.items() if tag in live}
 
     @callback
     def _arm(self, reminder: Reminder) -> None:
@@ -215,11 +235,10 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         if reminder.tag in self._s.fired:
             return
         self._s.fired.add(reminder.tag)  # claim before awaiting → no concurrent double-fire
-        # Remember which action tokens belong to this tag, so a tap can cancel its nags.
-        for act in reminder.data.get("actions", []):
-            if isinstance(act, dict) and (token := act.get("action")):
-                self._s.action_tags[token] = reminder.tag
-        if not await self._notify(reminder.title, reminder.message, reminder.data):
+        self.note_actions(reminder.tag, reminder.data)
+        if not await self.async_notify(
+            reminder.title, reminder.message, _payload(reminder)
+        ):
             self._s.fired.discard(reminder.tag)  # let the next poll re-arm it
             for token in [t for t, tag in self._s.action_tags.items() if tag == reminder.tag]:
                 self._s.action_tags.pop(token, None)
@@ -229,14 +248,28 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             await self._retry_acks()
         self._start_nag(reminder)
 
-    async def _notify(self, title: str, message: str, data: dict[str, Any]) -> bool:
-        """Call the notify service; return whether it succeeded."""
+    def namespaced_tag(self, tag: str) -> str:
+        """Prefix a Core tag with this instance's label.
+
+        The companion app dedups notifications by tag across the whole phone, so
+        two Core instances sharing a notify target would overwrite each other's
+        notifications on any tag they both use.
+        """
+        return f"{self._tag_prefix}{tag}"
+
+    async def async_notify(
+        self, title: str, message: str, data: dict[str, Any], *, blocking: bool = True
+    ) -> bool:
+        """Call the notify service with this instance's tag namespace applied."""
+        payload = dict(data)
+        if tag := payload.get("tag"):
+            payload["tag"] = self.namespaced_tag(str(tag))
         try:
             await self.hass.services.async_call(
                 "notify",
                 self._notify_target,
-                {"title": title, "message": message, "data": data},
-                blocking=True,
+                {"title": title, "message": message, "data": payload},
+                blocking=blocking,
             )
         except Exception:
             _LOGGER.exception("notify.%s failed", self._notify_target)
@@ -280,7 +313,9 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         escalate = bool((nag.reminder.nag or {}).get("escalate"))
         data = _escalated(nag.reminder.data, nag.count) if escalate else nag.reminder.data
         self.hass.async_create_task(
-            self._notify(nag.reminder.title, nag.reminder.message, data)
+            self.async_notify(
+                nag.reminder.title, nag.reminder.message, _payload(nag.reminder, data)
+            )
         )
         if nag.count < (nag.reminder.nag or {}).get("max", 0):
             self._schedule_nag(tag)
@@ -311,21 +346,35 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     # --- action forwarding (slice 5) ---
     @callback
+    def note_actions(self, tag: str, data: dict[str, Any]) -> None:
+        """Record which action tokens belong to a notification this entry sent."""
+        for act in data.get("actions", []):
+            if isinstance(act, dict) and (token := act.get("action")):
+                self._s.action_tags.pop(token, None)
+                self._s.action_tags[token] = tag
+        while len(self._s.action_tags) > _MAX_ACTION_TOKENS:
+            self._s.action_tags.pop(next(iter(self._s.action_tags)))
+
+    @callback
     def handle_action_event(self, event: Event) -> None:
         """Forward a tapped companion-app action to Core and stop its nag chain.
 
-        The event only carries the compact `action` token. We forward that token to
-        Core's capability webhook (which applies the domain action) and, if it
-        belongs to a reminder we delivered, cancel its local nag chain and dismiss
-        the notification right away — no waiting for the next poll.
+        The event only carries the compact `action` token, and the event bus is
+        global: with two Core entries loaded, both see every tap. Only the entry
+        that sent the notification may forward the token — otherwise the other
+        Core is handed an action it never issued. If the token also belongs to a
+        reminder we delivered, cancel its local nag chain and dismiss the
+        notification right away — no waiting for the next poll.
         """
         token = event.data.get("action")
         if not token:
             return
-        self.hass.async_create_task(self._forward_action(token))
         tag = self._s.action_tags.get(token)
         if tag is None:
-            return
+            return  # another entry's notification (or another integration's)
+        self.hass.async_create_task(self._forward_action(token))
+        if not tag:
+            return  # ours, but it carried no tag — nothing local to cancel
         self._s.handled.add(tag)
         self._cancel_nag(tag)
         if tag in self._s.scheduled:
@@ -341,7 +390,7 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     async def _clear(self, tag: str) -> None:
         """Dismiss the delivered notification off the phone by its tag."""
-        await self._notify("", "clear_notification", {"tag": tag})
+        await self.async_notify("", "clear_notification", {"tag": tag})
 
     async def _retry_acks(self) -> None:
         """Confirm delivered entries to Core; keep unconfirmed ones for the next try."""

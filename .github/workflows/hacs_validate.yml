@@ -7,11 +7,21 @@ on:
   schedule:
     - cron: "0 0 * * *"
 
+# hacs/action is pinned to @main deliberately — that is the ref HACS documents,
+# and a tag pin silently stops tracking their validation rules. The trade-off is
+# a mutable ref Dependabot cannot bump, so the blast radius is capped instead:
+# read-only permissions, and checkout drops the token rather than leaving it in
+# .git/config for the action to read.
+permissions:
+  contents: read
+
 jobs:
   hacs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: HACS validation
         uses: hacs/action@main
         with:

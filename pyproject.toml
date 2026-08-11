@@ -36,7 +36,13 @@ ignore = [
   "TC002",
   "TC003",
 ]
-"scripts/*" = ["T20", "INP001", "D", "TRY003", "EM101", "EM102", "PLR0911", "E501", "S"]
+# Copied verbatim from the ha-integration skill's templates/ — the sanctioned
+# adaptation is a lint exclusion, never an edit to the copied file.
+"scripts/*" = [
+  "T20", "INP001", "D", "TRY003", "EM101", "EM102", "PLR0911", "E501", "S",
+  "FURB167", "PLW2901", "SIM115", "PTH123",
+]
+"conftest.py" = ["I001", "TC003", "ARG001", "PT022"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

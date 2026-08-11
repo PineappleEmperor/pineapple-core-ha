@@ -1,0 +1,38 @@
+# Test-only dependencies. Installed by .github/workflows/python_validate.yml
+# before the pytest step; also `pip install -r requirements.test.txt` locally.
+#
+# pytest-homeassistant-custom-component tracks Home Assistant releases 1:1 and
+# hard-pins `homeassistant==<that release>`, so the pin below decides which HA
+# version the suite runs against. A mismatched pin fails at import, not at test
+# time. Pick the release matching the HA you target, and keep its Python floor
+# in lockstep with the `python-version` matrix in python_validate.yml,
+# `target-version` in pyproject.toml, and pyrightconfig.json.
+#
+# Version map (verify at pypi.org/project/pytest-homeassistant-custom-component):
+#   0.13.354 -> homeassistant 2026.8.0, requires-python >=3.14
+pytest-homeassistant-custom-component==0.13.354
+
+# Add integration-specific test deps below (e.g. a fake transport, respx,
+# freezegun beyond what the plugin already pins).
+
+# --- Panel integrations only -------------------------------------------------
+# If the integration registers a panel it declares `frontend` (and usually
+# `panel_custom`) in manifest.json `dependencies`. The frontend COMPONENT has its
+# own pip requirement, and `pip install homeassistant` does NOT pull it in —
+# component requirements are installed by HA at runtime, not by pip.
+#
+# Without it EVERY setup test fails:
+#   ERROR: Error during setup of component frontend: No module named 'hass_frontend'
+#   DependencyError: Could not setup dependencies: frontend, panel_custom
+#
+# The worst property: it usually passes LOCALLY, because a dev machine already has
+# the package from some earlier install. Local green, CI red — and the failures
+# surface as `'MockConfigEntry' object has no attribute 'runtime_data'`, which
+# points at the integration rather than at a missing dependency.
+#
+# Pin it from core's own manifest for the HA version above, NOT from PyPI latest:
+#   curl -s https://raw.githubusercontent.com/home-assistant/core/<ha-version>/homeassistant/components/frontend/manifest.json
+# For HA 2026.8.0 that is 20260729.5 (PyPI latest was already 20260729.6 — a
+# mismatch here reintroduces the same import failure). Move it whenever the
+# pytest-homeassistant-custom-component pin moves.
+# home-assistant-frontend==20260729.5   # uncomment for panel integrations

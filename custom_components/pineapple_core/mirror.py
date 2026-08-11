@@ -43,12 +43,10 @@ _IGNORE = {None, "", "unknown", "unavailable"}
 
 
 def _to_iso(raw: str) -> str | None:
-    """Normalize a date/datetime string to ISO, or None if it isn't one.
-
-    Accepts ISO 8601 (Ocado's deadline) and DD/MM/YYYY (UKBinCollectionData's
-    `next_collection`). Core parses `next_at` with `new Date(...)`, which handles
-    ISO datetimes and `YYYY-MM-DD` but NOT `DD/MM/YYYY` — hence the normalization.
-    """
+    """Normalize a date/datetime string to ISO, or None if it isn't one."""
+    # Accepts ISO 8601 (Ocado's deadline) and DD/MM/YYYY (UKBinCollectionData's
+    # `next_collection`). Core parses `next_at` with `new Date(...)`, which handles
+    # ISO datetimes and `YYYY-MM-DD` but NOT `DD/MM/YYYY`.
     raw = raw.strip()
     if not raw:
         return None
@@ -68,11 +66,9 @@ def _to_iso(raw: str) -> str | None:
 def async_setup_mirror(
     hass: HomeAssistant, entry: PineappleCoreConfigEntry, client: PineappleCoreClient
 ) -> CALLBACK_TYPE:
-    """Watch the configured entities; return an unsubscribe callback.
-
-    A no-op unsubscribe when no entities are configured, so the caller can always
-    register it with `entry.async_on_unload`.
-    """
+    """Watch the configured entities; return an unsubscribe callback."""
+    # A no-op unsubscribe when no entities are configured, so the caller can
+    # always register it with `entry.async_on_unload`.
     entities: list[str] = entry.options.get(CONF_MIRROR_ENTITIES, [])
     if not entities:
         return lambda: None

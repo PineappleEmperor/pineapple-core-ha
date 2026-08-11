@@ -6,10 +6,10 @@ rules:
     status: exempt
     comment: No custom services are registered.
   appropriate-polling: todo
-  brands: todo
+  brands: done
   common-modules: done
-  config-flow-test-coverage: todo
-  config-flow: todo
+  config-flow-test-coverage: done
+  config-flow: done
   dependency-transparency: done
   docs-actions:
     status: exempt
@@ -31,7 +31,7 @@ rules:
   action-exceptions:
     status: exempt
     comment: No custom services.
-  reauthentication-flow: todo
+  reauthentication-flow: done
   parallel-updates: todo
   test-coverage: todo
   integration-owner: done

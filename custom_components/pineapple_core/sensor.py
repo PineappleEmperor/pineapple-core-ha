@@ -88,12 +88,10 @@ class NextReminderSensor(PineappleCoreEntity, SensorEntity):
 
 
 class MirroredCountSensor(PineappleCoreEntity, SensorEntity):
-    """How many HA entities the integration mirrors (pushes) to Core.
+    """How many HA entities the integration mirrors (pushes) to Core."""
 
-    Static per config — reflects the 'Entities to mirror to Core' option; a reload
-    on options change re-reads it.
-    """
-
+    # Static per config — reflects the 'Entities to mirror to Core' option; the
+    # reload on options change re-reads it.
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_state_class = SensorStateClass.MEASUREMENT
 

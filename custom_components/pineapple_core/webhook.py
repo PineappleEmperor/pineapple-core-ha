@@ -109,13 +109,11 @@ async def _handle(
 async def async_register_webhook(
     hass: HomeAssistant, entry: PineappleCoreConfigEntry
 ) -> str | None:
-    """Register the inbound webhook (minting an id if needed) and return its URL.
-
-    Prefers a Nabu Casa cloudhook when a cloud subscription is active (so Core can
-    reach it off-LAN), else the local webhook URL. Returns None when HA has no URL
-    configured yet (the webhook still works on-LAN; the URL just isn't resolvable).
-    The resolved URL is what the user copies into Core's `HA_WEBHOOK_URL`.
-    """
+    """Register the inbound webhook (minting an id if needed) and return its URL."""
+    # Prefers a Nabu Casa cloudhook when a cloud subscription is active (so Core
+    # can reach it off-LAN), else the local webhook URL. Returns None when HA has
+    # no URL configured yet — the webhook still works on-LAN, the URL just isn't
+    # resolvable. The resolved URL is what the user copies into `HA_WEBHOOK_URL`.
     webhook_id = entry.data.get(CONF_WEBHOOK_ID)
     if not webhook_id:
         webhook_id = async_generate_id()
@@ -136,12 +134,10 @@ async def async_register_webhook(
 async def _async_resolve_url(
     hass: HomeAssistant, entry: PineappleCoreConfigEntry, webhook_id: str
 ) -> str | None:
-    """Cloudhook URL when cloud is active (created + cached once), else the local URL.
-
-    `cloud` is imported lazily — it is only a soft (`after_`) dependency, and a
-    top-level import would drag its whole optional stack into every load/test.
-    Returns None when no local URL is resolvable yet (HA base URL unset).
-    """
+    """Cloudhook URL when cloud is active (created + cached once), else the local URL."""
+    # `cloud` is imported lazily — it is only a soft (`after_`) dependency, and a
+    # top-level import would drag its whole optional stack into every load/test.
+    # Returns None when no local URL is resolvable yet (HA base URL unset).
     cloud = _cloud()
     try:
         cloud_active = cloud is not None and cloud.async_active_subscription(hass)
@@ -167,12 +163,10 @@ async def _async_resolve_url(
 
 
 def async_unregister_webhook(hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> None:
-    """Unregister the local handler on unload.
-
-    The cloudhook is deliberately NOT deleted here — a reload unloads then re-sets-up,
-    and recreating a cloudhook mints a NEW URL, which would silently break Core's
-    stored `HA_WEBHOOK_URL`. Cloudhook teardown belongs to entry removal.
-    """
+    """Unregister the local handler on unload."""
+    # The cloudhook is deliberately NOT deleted here — a reload unloads then
+    # re-sets-up, and recreating a cloudhook mints a NEW URL, which would silently
+    # break Core's stored `HA_WEBHOOK_URL`. Teardown belongs to entry removal.
     webhook_id = entry.data.get(CONF_WEBHOOK_ID)
     if webhook_id:
         async_unregister(hass, webhook_id)

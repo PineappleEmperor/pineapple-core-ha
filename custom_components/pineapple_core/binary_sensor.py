@@ -31,12 +31,10 @@ async def async_setup_entry(
 
 
 class CoreReachableSensor(PineappleCoreEntity, BinarySensorEntity):
-    """Whether Core is currently being polled successfully.
+    """Whether Core is currently being polled successfully."""
 
-    Delivery does not depend on this — reminders fire from the cached queue — but
-    it surfaces whether the queue is being kept fresh.
-    """
-
+    # Delivery does not depend on this — reminders fire from the cached queue —
+    # but it surfaces whether the queue is being kept fresh.
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 

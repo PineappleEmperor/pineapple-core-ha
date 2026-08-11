@@ -64,11 +64,9 @@ def _interval_seconds(interval: str | None) -> int | None:
 
 
 def _payload(reminder: Reminder, data: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Build a reminder's notification data, guaranteed to carry its dedup tag.
-
-    Dismissal (`clear_notification`) matches on `data.tag`, so a reminder whose
-    Core payload omits it could never be dismissed.
-    """
+    """Build a reminder's notification data, guaranteed to carry its dedup tag."""
+    # Dismissal (`clear_notification`) matches on `data.tag`, so a reminder whose
+    # Core payload omits it could never be dismissed.
     out = dict(reminder.data if data is None else data)
     out.setdefault("tag", reminder.tag)
     return out
@@ -96,12 +94,10 @@ class _Nag:
 
 @dataclass
 class _State:
-    """All per-reminder delivery state, keyed by tag.
+    """All per-reminder delivery state, keyed by tag."""
 
-    Kept together so pruning a tag can never leave a dangling schedule, nag, or
-    ack behind.
-    """
-
+    # Kept in one place so pruning a tag can never leave a dangling schedule,
+    # nag, or ack behind.
     scheduled: dict[str, CALLBACK_TYPE] = field(default_factory=dict)
     fired: set[str] = field(default_factory=set)
     handled: set[str] = field(default_factory=set)
@@ -111,16 +107,16 @@ class _State:
 
 
 class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
-    """Owns the local schedule of Core's upcoming reminders.
+    """Owns the local schedule of Core's upcoming reminders."""
 
-    Each poll re-syncs the queue and (re)arms a native ``async_track_point_in_time``
-    callback per reminder, so notifications fire on time from the cached queue even
-    if Core is unreachable at the firing instant. A delivered reminder repeats its
-    own nag chain locally (Core hands over the policy but not the timing), and a
-    tapped action is forwarded straight to Core's capability webhook while its local
-    nags are cancelled at once. A locally-fired tag is remembered so a failed ack
-    can't double-fire; the ack is retried each poll until Core drops it.
-    """
+    # Each poll re-syncs the queue and (re)arms a native
+    # `async_track_point_in_time` callback per reminder, so notifications fire on
+    # time from the cached queue even if Core is unreachable at the firing
+    # instant. A delivered reminder repeats its own nag chain locally (Core hands
+    # over the policy but not the timing), and a tapped action is forwarded
+    # straight to Core's capability webhook while its local nags are cancelled at
+    # once. A locally-fired tag is remembered so a failed ack can't double-fire;
+    # the ack is retried each poll until Core drops it.
 
     def __init__(self, hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> None:
         """Build the client from the entry and set the poll cadence."""
@@ -197,14 +193,12 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     @callback
     def _prune(self, feed: dict[str, Reminder]) -> None:
-        """Drop remembered state for tags gone from the feed and not still owed.
-
-        A tag with a live nag chain is kept regardless of the feed — the chain runs
-        locally after we've acked the reminder away, and it still needs its dedup
-        memory until it's stopped. `action_tags` is deliberately not pruned here:
-        it is the proof a tapped token is ours, and a tap can land long after Core
-        dropped the reminder, so it is FIFO-capped instead.
-        """
+        """Drop remembered state for tags gone from the feed and not still owed."""
+        # A tag with a live nag chain is kept regardless of the feed — the chain
+        # runs locally after we've acked the reminder away, and it still needs its
+        # dedup memory until it's stopped. `action_tags` is deliberately not pruned
+        # here: it is the proof a tapped token is ours, and a tap can land long
+        # after Core dropped the reminder, so it is FIFO-capped instead.
         keep = set(feed) | set(self._s.pending_acks) | set(self._s.nags)
         self._s.fired = {t for t in self._s.fired if t in keep}
         self._s.handled = {t for t in self._s.handled if t in feed}
@@ -249,12 +243,10 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         self._start_nag(reminder)
 
     def namespaced_tag(self, tag: str) -> str:
-        """Prefix a Core tag with this instance's label.
-
-        The companion app dedups notifications by tag across the whole phone, so
-        two Core instances sharing a notify target would overwrite each other's
-        notifications on any tag they both use.
-        """
+        """Prefix a Core tag with this instance's label."""
+        # The companion app dedups notifications by tag across the whole phone, so
+        # two Core instances sharing a notify target would overwrite each other's
+        # notifications on any tag they both use.
         return f"{self._tag_prefix}{tag}"
 
     async def async_notify(
@@ -331,12 +323,10 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     @callback
     def note_external_clear(self, tag: str) -> None:
-        """Stop nagging a reminder cleared elsewhere (Core's `clear` webhook push).
-
-        When the item is completed in the app, Core clears the notification; that
-        clear now also ends the local nag chain, so a handled reminder stops nagging
-        without waiting for a tap on the phone.
-        """
+        """Stop nagging a reminder cleared elsewhere (Core's `clear` webhook push)."""
+        # Completing the item in the app makes Core clear the notification; that
+        # clear also ends the local nag chain, so a handled reminder stops nagging
+        # without waiting for a tap on the phone.
         if not tag:
             return
         self._s.handled.add(tag)
@@ -357,15 +347,13 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
 
     @callback
     def handle_action_event(self, event: Event) -> None:
-        """Forward a tapped companion-app action to Core and stop its nag chain.
-
-        The event only carries the compact `action` token, and the event bus is
-        global: with two Core entries loaded, both see every tap. Only the entry
-        that sent the notification may forward the token — otherwise the other
-        Core is handed an action it never issued. If the token also belongs to a
-        reminder we delivered, cancel its local nag chain and dismiss the
-        notification right away — no waiting for the next poll.
-        """
+        """Forward a tapped companion-app action to Core and stop its nag chain."""
+        # The event only carries the compact `action` token, and the event bus is
+        # global: with two Core entries loaded, both see every tap. Only the entry
+        # that sent the notification may forward the token — otherwise the other
+        # Core is handed an action it never issued. If the token also belongs to a
+        # reminder we delivered, cancel its local nag chain and dismiss the
+        # notification right away, rather than waiting for the next poll.
         token = event.data.get("action")
         if not token:
             return

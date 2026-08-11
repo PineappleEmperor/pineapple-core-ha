@@ -34,12 +34,10 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 def _user_schema(hass: HomeAssistant) -> vol.Schema:
-    """Build the setup form, offering the installed notify services as a dropdown.
-
-    `notify_target` is a per-install device (e.g. the companion app on your
-    phone), so it's picked from the notify services HA actually has — with
-    `custom_value` on, so a service that hasn't registered yet can still be typed.
-    """
+    """Build the setup form, offering the installed notify services as a dropdown."""
+    # `notify_target` is a per-install device (e.g. the companion app on your
+    # phone), so it's picked from the notify services HA actually has — with
+    # `custom_value` on, so a service that hasn't registered yet can still be typed.
     targets = sorted(hass.services.async_services().get("notify", {}))
     return vol.Schema(
         {

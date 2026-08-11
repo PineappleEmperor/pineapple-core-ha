@@ -21,25 +21,22 @@ class PineappleCoreAuthError(PineappleCoreError):
 
 @dataclass(slots=True)
 class Reminder:
-    """One upcoming notification Core wants delivered.
-
-    `data` is the ready-to-use companion-app payload block (tag, actions, push,
-    …) — the integration relays it verbatim to the notify service, so Core stays
-    the single source of truth for how a notification is shaped.
-
-    `nag` is Core's repeat policy the integration schedules locally
-    (`{interval, max, escalate}`) or ``None`` to fire once. `ack` is the opaque
-    retire-token echoed back on delivery (`{"row": id}` or `{"marker": {...}}`) —
-    the integration never interprets it, only relays it.
-    """
+    """One upcoming notification Core wants delivered."""
 
     tag: str
     fire_at: str
     title: str
     message: str
+    # The ready-to-use companion-app payload block (tag, actions, push, …),
+    # relayed verbatim — Core stays the single source of truth for how a
+    # notification is shaped.
     data: dict[str, Any]
     priority: int = 3
+    # Core's repeat policy, scheduled locally: {interval, max, escalate}, or None
+    # to fire once.
     nag: dict[str, Any] | None = None
+    # The opaque retire-token echoed back on delivery ({"row": id} or
+    # {"marker": {...}}) — never interpreted here, only relayed.
     ack: dict[str, Any] | None = None
 
 
@@ -75,25 +72,20 @@ class PineappleCoreClient:
         ]
 
     async def async_ack(self, acks: list[dict[str, Any]]) -> None:
-        """Tell Core these entries were delivered so it retires them.
-
-        Each ack is the entry's own `ack` object relayed verbatim — Core marks
-        the backing row sent, or writes the med fire-once marker.
-        """
+        """Tell Core these entries were delivered so it retires them."""
+        # Each ack is the entry's own `ack` object relayed verbatim — Core marks
+        # the backing row sent, or writes the med fire-once marker.
         if not acks:
             return
         await self._request("POST", API_ACK, json={"acks": acks})
 
     async def async_send_action(self, token: str) -> None:
-        """Forward a tapped notification action to Core's capability webhook.
-
-        Replaces the old HA automation that POSTed `mobile_app_notification_action`
-        to the webhook: Core verifies the single-use `tok` and applies the domain
-        action (log dose / complete todo / …). The `/api/webhook/` route
-        self-authenticates via the token, so no bearer is sent. Core's own clear is
-        left to run — it also dismisses the entity's sibling notifications, which the
-        integration's local single-tag clear does not.
-        """
+        """Forward a tapped notification action to Core's capability webhook."""
+        # Core verifies the single-use `tok` and applies the domain action (log
+        # dose / complete todo / …). The `/api/webhook/` route self-authenticates
+        # via that token, so no bearer is sent. Core's own clear is left to run —
+        # it dismisses the entity's sibling notifications too, which the local
+        # single-tag clear does not.
         try:
             async with (
                 asyncio.timeout(REQUEST_TIMEOUT),
@@ -107,14 +99,11 @@ class PineappleCoreClient:
     async def async_send_helper(
         self, entity: str, *, value: float | None = None, next_at: str | None = None
     ) -> None:
-        """Mirror a watched entity back to Core (HA → Core helper).
-
-        Sends `value` (an input_number done-state → logs the linked habit/todo) or
-        `next_at` (an externally-scheduled date → drives the item's reminder), matching
-        Core's helper contract. An integral value is sent as an int (Core expects
-        0|1|2). Replaces the `callback - bins status to core` AND `core_helper_schedule`
-        automations.
-        """
+        """Mirror a watched entity back to Core (HA → Core helper)."""
+        # Sends `value` (an input_number done-state → logs the linked habit/todo)
+        # or `next_at` (an externally-scheduled date → drives the item's
+        # reminder), matching Core's helper contract. An integral value goes as an
+        # int, since Core expects 0|1|2.
         payload: dict[str, Any] = {"entity": entity}
         if value is not None:
             payload["value"] = int(value) if float(value).is_integer() else value

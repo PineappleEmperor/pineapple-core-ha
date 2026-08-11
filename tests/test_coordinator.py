@@ -109,7 +109,7 @@ async def test_fires_notify_at_fire_at_and_acks(
     assert len(calls) == 1
     assert calls[0].data["title"] == "Bins"
     assert calls[0].data["message"] == "Out"
-    assert calls[0].data["data"]["tag"] == "bins-1"
+    assert calls[0].data["data"]["tag"] == "core_bins-1"  # namespaced per instance
     assert _ack_count(aioclient_mock) == 1
 
 

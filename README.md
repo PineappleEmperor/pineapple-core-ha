@@ -18,9 +18,13 @@ remembers what it delivered and retries only the ack.
 
 ## What it creates
 
-- A **Pineapple Core** service device with diagnostics: *Upcoming reminders*, *Next
-  reminder*, *Core reachable*, and *Inbound webhook URL* (the value to paste into Core's
-  `HA_WEBHOOK_URL` — see the cutover below).
+- A service device **named after your Core instance** — the first label of its base URL,
+  so `https://budgets.juicebox.casa` becomes *Budgets* — with diagnostics: *Upcoming
+  reminders*, *Next reminder*, *Mirrored to Core*, and *Core reachable*.
+
+The inbound webhook URL (the value to paste into Core's `HA_WEBHOOK_URL` — see the cutover
+below) is **not** a sensor: a cloudhook URL is a secret, so it is logged at DEBUG on the
+`custom_components.pineapple_core` logger instead.
 
 ## Setup
 
@@ -30,6 +34,20 @@ remembers what it delivered and retries only the ack.
    (e.g. `mobile_app_your_phone`).
 4. Tune the **poll interval**, **look-ahead window**, and **entities to mirror to Core**
    any time via the integration's *Configure* (options).
+
+## Multiple Core instances
+
+Add the integration once per Core base URL — `core.juicebox.casa` and
+`budgets.juicebox.casa` can run side by side. Each entry keeps its own token, notify
+target, poll cadence, mirror list, and inbound webhook, and they stay out of each other's
+way:
+
+- **Names** come from the first host label, so the two devices are *Core* and *Budgets*
+  (and their entities `sensor.core_next_reminder`, `sensor.budgets_next_reminder`).
+- **Notification tags** are prefixed with the same label (`core_bins-2026-08-01`), so two
+  instances can share one notify target without one's notification replacing the other's.
+- **Tapped actions** are forwarded only by the entry that sent the notification — the
+  companion app's tap event is global, but a Core is never handed another's action token.
 
 ## How delivery works
 

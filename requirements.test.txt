@@ -10,7 +10,7 @@
 #
 # Version map (verify at pypi.org/project/pytest-homeassistant-custom-component):
 #   0.13.354 -> homeassistant 2026.8.0, requires-python >=3.14
-pytest-homeassistant-custom-component==0.13.354
+pytest-homeassistant-custom-component==0.13.355
 
 # Add integration-specific test deps below (e.g. a fake transport, respx,
 # freezegun beyond what the plugin already pins).

@@ -68,15 +68,35 @@ automations can be deleted:
   *Inbound webhook URL* diagnostic into Core's `HA_WEBHOOK_URL` on **both** the worker and
   Pages. Core keeps POSTing there; the integration routes each `event` to the right service.
 - **HA → Core helper mirror** (bin `input_number` done-state → logs the habit): add those
-  entities under *Configure → Entities to mirror to Core*. On a numeric change the value is
-  POSTed to `/api/integrations/ha/helper`.
+  entities under *Configure → Entities to mirror to Core*. On any change the entity's whole
+  state is POSTed to `/api/integrations/ha/helper`.
 - **Action taps** are already forwarded to Core's capability webhook by the integration.
 
-The mirror handles **both** halves of the old rest_commands:
-- **numeric** state (`input_number` done-state) → `{entity, value}` — logs the linked habit/todo.
-- **date** state or a `next_collection` attribute → `{entity, next_at}` — Ocado's ISO deadline
-  is read from the state; UKBinCollectionData's `DD/MM/YYYY` `next_collection` attribute is read
-  and normalized to ISO. So `core_helper_value` **and** `core_helper_schedule` both retire.
+Every mirrored change sends the entity's full state, so Core can decide what a given
+consumer (habits, settle-up, budgeting) needs from it:
+
+```json
+{
+  "entity": "sensor.settle_up_balance",
+  "state": "12.5",
+  "attributes": { "counterparty": "flatmate", "unit_of_measurement": "GBP" },
+  "unit": "GBP",
+  "last_changed": "2026-08-11T21:04:11.123456+00:00",
+  "last_updated": "2026-08-11T21:04:11.123456+00:00",
+  "value": 12.5
+}
+```
+
+Two derived keys are added when they apply, which is what retires **both** halves of the
+old rest_commands:
+- `value` — a numeric state (`input_number` done-state), integral values sent as ints.
+- `next_at` — a date-ish state (Ocado's ISO deadline), or UKBinCollectionData's `DD/MM/YYYY`
+  `next_collection` attribute normalized to ISO. So `core_helper_value` **and**
+  `core_helper_schedule` both retire.
+
+Attribute values are coerced to JSON where possible (datetimes, sets); anything opaque is
+skipped rather than failing the push. `unknown` and `unavailable` states are never mirrored —
+they would blank a good value in Core.
 
 **Cutover order:** install the latest → copy the webhook URL into Core's `HA_WEBHOOK_URL`
 (both surfaces) → add the bin/Ocado entities under *Entities to mirror to Core* → delete the

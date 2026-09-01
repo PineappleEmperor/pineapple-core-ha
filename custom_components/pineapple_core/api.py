@@ -96,19 +96,10 @@ class PineappleCoreClient:
             msg = f"Could not forward action to Core: {err}"
             raise PineappleCoreError(msg) from err
 
-    async def async_send_helper(
-        self, entity: str, *, value: float | None = None, next_at: str | None = None
-    ) -> None:
+    async def async_send_helper(self, payload: dict[str, Any]) -> None:
         """Mirror a watched entity back to Core (HA → Core helper)."""
-        # Sends `value` (an input_number done-state → logs the linked habit/todo)
-        # or `next_at` (an externally-scheduled date → drives the item's
-        # reminder), matching Core's helper contract. An integral value goes as an
-        # int, since Core expects 0|1|2.
-        payload: dict[str, Any] = {"entity": entity}
-        if value is not None:
-            payload["value"] = int(value) if float(value).is_integer() else value
-        if next_at is not None:
-            payload["next_at"] = next_at
+        # The payload is built in mirror.py — this module stays HA-free so it can
+        # be tested without a running Home Assistant.
         await self._request("POST", API_HELPER, json=payload)
 
     async def _request(

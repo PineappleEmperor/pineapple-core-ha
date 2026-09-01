@@ -1,4 +1,4 @@
-"""HA → Core helper mirror: watched entities push their numeric state to Core."""
+"""HA → Core helper mirror: watched entities push their whole state to Core."""
 
 from __future__ import annotations
 
@@ -46,21 +46,92 @@ async def _setup_with_mirror(
     return entry
 
 
-async def test_numeric_state_change_pushes_helper(
+async def test_state_change_pushes_whole_state(
     hass: HomeAssistant,
     entry_data: dict[str, Any],
     aioclient_mock: AiohttpClientMocker,
 ) -> None:
-    """A watched entity going numeric POSTs {entity, value} (integral → int)."""
+    """A watched entity pushes state, attributes, unit and both timestamps."""
+    _stub(aioclient_mock)
+    await _setup_with_mirror(hass, entry_data, ["sensor.settle_up_balance"])
+
+    hass.states.async_set(
+        "sensor.settle_up_balance",
+        "12.5",
+        {"unit_of_measurement": "GBP", "counterparty": "flatmate", "friendly_name": "Balance"},
+    )
+    await hass.async_block_till_done()
+
+    posts = _helper_posts(aioclient_mock)
+    assert len(posts) == 1
+    body = posts[0][2]
+    assert body["entity"] == "sensor.settle_up_balance"
+    assert body["state"] == "12.5"
+    assert body["unit"] == "GBP"
+    assert body["attributes"]["counterparty"] == "flatmate"
+    assert body["value"] == 12.5  # non-integral stays a float
+    assert body["last_changed"] and body["last_updated"]
+
+
+async def test_integral_numeric_state_is_sent_as_int(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """Core's helper contract expects 0|1|2 for a done-state, so 1.0 goes as 1."""
     _stub(aioclient_mock)
     await _setup_with_mirror(hass, entry_data, ["input_number.rubbish_alert"])
 
     hass.states.async_set("input_number.rubbish_alert", "1")
     await hass.async_block_till_done()
 
+    body = _helper_posts(aioclient_mock)[0][2]
+    assert body["value"] == 1
+    assert not isinstance(body["value"], float)
+
+
+async def test_text_state_is_mirrored_not_dropped(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A non-numeric, non-date state still reaches Core — it just carries no value."""
+    _stub(aioclient_mock)
+    await _setup_with_mirror(hass, entry_data, ["sensor.budget_period"])
+
+    hass.states.async_set("sensor.budget_period", "august", {"remaining": 240})
+    await hass.async_block_till_done()
+
     posts = _helper_posts(aioclient_mock)
     assert len(posts) == 1
-    assert posts[0][2] == {"entity": "input_number.rubbish_alert", "value": 1}
+    body = posts[0][2]
+    assert body["state"] == "august"
+    assert body["attributes"]["remaining"] == 240
+    assert "value" not in body
+    assert "next_at" not in body
+
+
+async def test_unserialisable_attribute_is_skipped(
+    hass: HomeAssistant,
+    entry_data: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """HA's encoder coerces what it can; only a truly opaque value is dropped."""
+    _stub(aioclient_mock)
+    await _setup_with_mirror(hass, entry_data, ["sensor.settle_up_balance"])
+
+    hass.states.async_set(
+        "sensor.settle_up_balance",
+        "3",
+        {"ok": 1, "coerced": {2, 1}, "opaque": object()},
+    )
+    await hass.async_block_till_done()
+
+    body = _helper_posts(aioclient_mock)[0][2]
+    assert body["attributes"]["ok"] == 1
+    assert sorted(body["attributes"]["coerced"]) == [1, 2]  # a set survives as a list
+    assert "opaque" not in body["attributes"]  # dropped, and the push still went
+    assert body["value"] == 3
 
 
 async def test_initial_sync_pushes_current_state_on_setup(
@@ -77,15 +148,16 @@ async def test_initial_sync_pushes_current_state_on_setup(
 
     posts = _helper_posts(aioclient_mock)
     assert len(posts) == 1
-    assert posts[0][2] == {"entity": "input_number.rubbish_alert", "value": 1}
+    assert posts[0][2]["entity"] == "input_number.rubbish_alert"
+    assert posts[0][2]["value"] == 1
 
 
-async def test_non_numeric_state_is_ignored(
+async def test_unknown_state_is_ignored(
     hass: HomeAssistant,
     entry_data: dict[str, Any],
     aioclient_mock: AiohttpClientMocker,
 ) -> None:
-    """A non-numeric state (unavailable/unknown) mirrors nothing."""
+    """`unavailable`/`unknown` mirror nothing — they would blank a good value."""
     _stub(aioclient_mock)
     await _setup_with_mirror(hass, entry_data, ["input_number.rubbish_alert"])
 
@@ -124,10 +196,8 @@ async def test_iso_datetime_state_pushes_next_at(
 
     posts = _helper_posts(aioclient_mock)
     assert len(posts) == 1
-    assert posts[0][2] == {
-        "entity": "sensor.ocado_next_edit_deadline",
-        "next_at": "2026-07-20T18:00:00+00:00",
-    }
+    assert posts[0][2]["next_at"] == "2026-07-20T18:00:00+00:00"
+    assert posts[0][2]["state"] == "2026-07-20T18:00:00+00:00"
 
 
 async def test_bins_next_collection_attribute_pushes_iso_next_at(
@@ -147,4 +217,7 @@ async def test_bins_next_collection_attribute_pushes_iso_next_at(
 
     posts = _helper_posts(aioclient_mock)
     assert len(posts) == 1
-    assert posts[0][2] == {"entity": "sensor.home_refuse_bin", "next_at": "2026-07-20"}
+    body = posts[0][2]
+    assert body["next_at"] == "2026-07-20"
+    assert body["state"] == "In 3 days"
+    assert body["attributes"]["next_collection"] == "20/07/2026"

@@ -58,7 +58,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry
     # `callback - bins status to core`). Re-armed on options change via reload.
     entry.async_on_unload(async_setup_mirror(hass, entry, coordinator.client))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
 
@@ -72,7 +71,3 @@ async def async_remove_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntr
     """On full removal, delete the cloudhook we created (reload keeps it)."""
     await async_remove_cloudhook(hass, entry)
 
-
-async def _async_reload_entry(hass: HomeAssistant, entry: PineappleCoreConfigEntry) -> None:
-    """Reload the entry when its options change (poll interval, window)."""
-    await hass.config_entries.async_reload(entry.entry_id)

@@ -54,7 +54,7 @@ rules:
   diagnostics: todo
   exception-translations: todo
   icon-translations: todo
-  reconfiguration-flow: todo
+  reconfiguration-flow: done
   dynamic-devices:
     status: exempt
     comment: Exactly one service device per entry.

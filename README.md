@@ -34,6 +34,8 @@ below) is **not** a sensor: a cloudhook URL is a secret, so it is logged at DEBU
    (e.g. `mobile_app_your_phone`).
 4. Tune the **poll interval**, **look-ahead window**, and **entities to mirror to Core**
    any time via the integration's *Configure* (options).
+5. Change the **base URL**, **token**, or **notify service** later via the entry's
+   ⋮ menu → *Reconfigure* — no need to delete and re-add the integration.
 
 ## Multiple Core instances
 

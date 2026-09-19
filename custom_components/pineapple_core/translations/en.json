@@ -11,7 +11,7 @@
         },
         "data_description": {
           "base_url": "The address of your Core instance, including scheme and any port.",
-          "api_token": "An api:full service token minted in Core \u2192 Settings \u2192 API access",
+          "api_token": "An api:full service token minted in Core → Settings → API access",
           "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_your_phone)"
         }
       },
@@ -21,6 +21,20 @@
         "data": {
           "api_token": "API token"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Pineapple Core",
+        "description": "Point this entry at a different Core instance, token, or notify service.",
+        "data": {
+          "base_url": "Core base URL",
+          "api_token": "API token",
+          "notify_target": "Notify service"
+        },
+        "data_description": {
+          "base_url": "The address of your Core instance, including scheme and any port.",
+          "api_token": "An api:full service token minted in Core → Settings → API access",
+          "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_your_phone)"
+        }
       }
     },
     "error": {
@@ -29,7 +43,8 @@
     },
     "abort": {
       "already_configured": "This Core instance is already set up.",
-      "reauth_successful": "Token updated."
+      "reauth_successful": "Token updated.",
+      "reconfigure_successful": "Pineapple Core reconfigured."
     }
   },
   "options": {
@@ -44,27 +59,19 @@
         "data_description": {
           "poll_interval": "How often to re-sync the upcoming queue from Core.",
           "window_hours": "Reminders further ahead than this aren't fetched yet.",
-          "mirror_entities": "When these change, their value (numeric) or date (next_at) is pushed to Core under the entity's own id. Core maps each to a habit (its state helper or date source) \u2014 e.g. a bin input_number logs the habit, a bin sensor's date drives its reminder."
+          "mirror_entities": "When these change, their value (numeric) or date (next_at) is pushed to Core under the entity's own id. Core maps each to a habit (its state helper or date source) — e.g. a bin input_number logs the habit, a bin sensor's date drives its reminder."
         }
       }
     }
   },
   "entity": {
     "sensor": {
-      "upcoming_count": {
-        "name": "Upcoming reminders"
-      },
-      "next_reminder": {
-        "name": "Next reminder"
-      },
-      "mirrored_count": {
-        "name": "Mirrored to Core"
-      }
+      "upcoming_count": { "name": "Upcoming reminders" },
+      "next_reminder": { "name": "Next reminder" },
+      "mirrored_count": { "name": "Mirrored to Core" }
     },
     "binary_sensor": {
-      "core_reachable": {
-        "name": "Core reachable"
-      }
+      "core_reachable": { "name": "Core reachable" }
     }
   }
 }

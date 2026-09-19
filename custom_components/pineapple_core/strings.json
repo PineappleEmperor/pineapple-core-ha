@@ -21,6 +21,20 @@
         "data": {
           "api_token": "API token"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Pineapple Core",
+        "description": "Point this entry at a different Core instance, token, or notify service.",
+        "data": {
+          "base_url": "Core base URL",
+          "api_token": "API token",
+          "notify_target": "Notify service"
+        },
+        "data_description": {
+          "base_url": "The address of your Core instance, including scheme and any port.",
+          "api_token": "An api:full service token minted in Core → Settings → API access",
+          "notify_target": "The notify service to fire, without the notify. prefix (e.g. mobile_app_your_phone)"
+        }
       }
     },
     "error": {
@@ -29,7 +43,8 @@
     },
     "abort": {
       "already_configured": "This Core instance is already set up.",
-      "reauth_successful": "Token updated."
+      "reauth_successful": "Token updated.",
+      "reconfigure_successful": "Pineapple Core reconfigured."
     }
   },
   "options": {

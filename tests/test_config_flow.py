@@ -1,4 +1,4 @@
-"""Config, reauth, and options flow tests.
+"""Config, reauth, reconfigure, and options flow tests.
 
 The transport is mocked at the aiohttp boundary; the flow's own `_validate` /
 `_probe` wiring runs for real so a refactor that drops the URL/token read fails
@@ -205,6 +205,110 @@ async def test_reauth_flow_rejects_bad_token(
     aioclient_mock.get(UPCOMING_URL, status=403)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_API_TOKEN: "still-bad"}
+    )
+
+    assert result.get("type") is FlowResultType.FORM
+    assert result.get("errors") == {"base": "invalid_auth"}
+    assert mock_config_entry.data[CONF_API_TOKEN] == API_TOKEN
+
+
+async def test_reconfigure_flow_changes_notify_target(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Reconfigure repoints an existing entry at a different notify service."""
+    mock_config_entry.add_to_hass(hass)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    assert result.get("type") is FlowResultType.FORM
+    assert result.get("step_id") == "reconfigure"
+    # The form opens on the entry's current values, so only the changed field is retyped.
+    schema = result["data_schema"].schema
+    suggested = {
+        str(key): key.description["suggested_value"]
+        for key in schema
+        if key.description
+    }
+    assert suggested == {
+        CONF_BASE_URL: BASE_URL,
+        CONF_API_TOKEN: API_TOKEN,
+        CONF_NOTIFY_TARGET: NOTIFY_TARGET,
+    }
+
+    aioclient_mock.get(UPCOMING_URL, json={"reminders": []})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_NOTIFY_TARGET: "dan_phone"}
+    )
+    await hass.async_block_till_done()
+
+    assert result.get("type") is FlowResultType.ABORT
+    assert result.get("reason") == "reconfigure_successful"
+    assert mock_config_entry.data[CONF_NOTIFY_TARGET] == "dan_phone"
+    assert mock_config_entry.data[CONF_BASE_URL] == BASE_URL
+
+
+async def test_reconfigure_flow_moves_entry_to_another_core(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """A new base URL is revalidated and becomes the entry's unique id and title."""
+    mock_config_entry.add_to_hass(hass)
+    moved = "https://pi.test"
+    aioclient_mock.get(f"{moved}/api/reminders/upcoming", json={"reminders": []})
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_BASE_URL: f"{moved}/"}
+    )
+    await hass.async_block_till_done()
+
+    assert result.get("type") is FlowResultType.ABORT
+    assert result.get("reason") == "reconfigure_successful"
+    assert mock_config_entry.data[CONF_BASE_URL] == moved
+    assert mock_config_entry.unique_id == moved
+    assert mock_config_entry.title == "Pi"
+
+
+async def test_reconfigure_flow_rejects_url_owned_by_another_entry(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+    entry_data: dict,
+) -> None:
+    """Moving an entry onto a Core a second entry already owns aborts."""
+    mock_config_entry.add_to_hass(hass)
+    other = MockConfigEntry(
+        domain=DOMAIN,
+        title="Other Core",
+        data={**entry_data, CONF_BASE_URL: "https://pi.test"},
+        unique_id="https://pi.test",
+    )
+    other.add_to_hass(hass)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_BASE_URL: "https://pi.test"}
+    )
+
+    assert result.get("type") is FlowResultType.ABORT
+    assert result.get("reason") == "already_configured"
+    assert mock_config_entry.data[CONF_BASE_URL] == BASE_URL
+
+
+async def test_reconfigure_flow_keeps_form_open_on_bad_token(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """A token Core rejects leaves the entry untouched and the form showing."""
+    mock_config_entry.add_to_hass(hass)
+    aioclient_mock.get(UPCOMING_URL, status=401)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_API_TOKEN: "expired"}
     )
 
     assert result.get("type") is FlowResultType.FORM

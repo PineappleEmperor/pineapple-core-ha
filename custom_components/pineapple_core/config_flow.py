@@ -1,4 +1,4 @@
-"""Config, options, and reauth flows for Pineapple Core."""
+"""Config, options, reauth, and reconfigure flows for Pineapple Core."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
+    OptionsFlowWithReload,
 )
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -33,17 +34,29 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-def _user_schema(hass: HomeAssistant) -> vol.Schema:
+def _user_schema(
+    hass: HomeAssistant, defaults: Mapping[str, Any] | None = None
+) -> vol.Schema:
     """Build the setup form, offering the installed notify services as a dropdown."""
     # `notify_target` is a per-install device (e.g. the companion app on your
     # phone), so it's picked from the notify services HA actually has — with
     # `custom_value` on, so a service that hasn't registered yet can still be typed.
     targets = sorted(hass.services.async_services().get("notify", {}))
+    current = defaults or {}
     return vol.Schema(
         {
-            vol.Required(CONF_BASE_URL): str,
-            vol.Required(CONF_API_TOKEN): str,
-            vol.Required(CONF_NOTIFY_TARGET): selector.SelectSelector(
+            vol.Required(
+                CONF_BASE_URL,
+                description={"suggested_value": current.get(CONF_BASE_URL)},
+            ): str,
+            vol.Required(
+                CONF_API_TOKEN,
+                description={"suggested_value": current.get(CONF_API_TOKEN)},
+            ): str,
+            vol.Required(
+                CONF_NOTIFY_TARGET,
+                description={"suggested_value": current.get(CONF_NOTIFY_TARGET)},
+            ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=targets,
                     custom_value=True,
@@ -61,7 +74,7 @@ async def _validate(hass: HomeAssistant, base_url: str, token: str) -> None:
 
 
 class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the setup, reauth, and options entry points."""
+    """Handle the setup, reconfigure, reauth, and options entry points."""
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -80,6 +93,33 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(
             step_id="user", data_schema=_user_schema(self.hass), errors=errors
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change an existing entry's URL, token, or notify target in place."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            base_url = user_input[CONF_BASE_URL].rstrip("/")
+            if base_url != entry.data[CONF_BASE_URL]:
+                # The base URL is the unique id, so pointing this entry at a
+                # different Core is fine — but not at one a second entry owns.
+                await self.async_set_unique_id(base_url)
+                self._abort_if_unique_id_configured()
+            errors = await self._probe(base_url, user_input[CONF_API_TOKEN])
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=base_url,
+                    title=instance_title(base_url),
+                    data_updates={**user_input, CONF_BASE_URL: base_url},
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_user_schema(self.hass, entry.data),
+            errors=errors,
         )
 
     async def async_step_reauth(
@@ -122,7 +162,7 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
         return PineappleCoreOptionsFlow()
 
 
-class PineappleCoreOptionsFlow(OptionsFlow):
+class PineappleCoreOptionsFlow(OptionsFlowWithReload):
     """Tune the poll interval and how far ahead Core is queried."""
 
     async def async_step_init(

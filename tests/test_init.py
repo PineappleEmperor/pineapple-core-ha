@@ -150,15 +150,18 @@ async def test_reload_on_options_update(
     mock_config_entry: MockConfigEntry,
     mock_upcoming: Callable[[list], None],
 ) -> None:
-    """Updating options reloads the entry and it comes back LOADED."""
+    """Finishing the options flow reloads the entry and it comes back LOADED."""
     mock_upcoming([])
     mock_config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     first_coordinator = mock_config_entry.runtime_data
 
-    hass.config_entries.async_update_entry(
-        mock_config_entry, options={"poll_interval": 7, "window_hours": 4}
+    # The reload is the options flow's own (`OptionsFlowWithReload`), not an
+    # update listener — writing the options directly deliberately wouldn't reload.
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {"poll_interval": 7, "window_hours": 4}
     )
     await hass.async_block_till_done()
 

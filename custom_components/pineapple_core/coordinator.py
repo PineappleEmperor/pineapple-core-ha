@@ -11,7 +11,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, ServiceNotFound
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -263,6 +263,15 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
                 {"title": title, "message": message, "data": payload},
                 blocking=blocking,
             )
+        except ServiceNotFound:
+            # Expected while the target integration is still loading (a restart or a
+            # reload window), and after a phone is renamed — neither is a crash.
+            _LOGGER.warning(
+                "notify.%s is not registered; reconfigure the entry to point at a "
+                "notify service that exists",
+                self._notify_target,
+            )
+            return False
         except Exception:
             _LOGGER.exception("notify.%s failed", self._notify_target)
             return False

@@ -186,6 +186,33 @@ async def test_notify_failure_leaves_reminder_to_retry(
     assert "bins-3" in coordinator._scheduled
 
 
+async def test_missing_notify_service_warns_without_a_traceback(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unregistered notify target is a warning, not a stack trace, and retries."""
+    fire_at = dt_util.utcnow() + timedelta(seconds=30)
+    aioclient_mock.get(
+        UPCOMING_URL,
+        json={"data": {"reminders": [_reminder("bins-9", fire_at)]}},
+        headers=JSON_HEADERS,
+    )
+    aioclient_mock.post(ACK_URL, json={"ok": True})
+
+    # No notify.<target> is registered — the reload window, or a renamed phone.
+    coordinator = await _setup(hass, mock_config_entry)
+
+    async_fire_time_changed(hass, fire_at + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    assert f"notify.{NOTIFY_TARGET} is not registered" in caplog.text
+    assert "Traceback" not in caplog.text
+    assert "bins-9" not in coordinator._fired  # released for the next poll
+    assert _ack_count(aioclient_mock) == 0
+
+
 async def test_cancelled_reminder_is_disarmed(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

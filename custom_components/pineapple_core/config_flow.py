@@ -21,6 +21,7 @@ from .const import (
     CONF_MIRROR_ENTITIES,
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
+    CONF_RECIPIENTS,
     CONF_WINDOW_HOURS,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WINDOW_HOURS,
@@ -34,6 +35,27 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+# The keys of one recipient row in the options form.
+_LABEL = "label"
+_SERVICE = "service"
+
+
+def _notify_services(hass: HomeAssistant) -> list[str]:
+    """List the notify services HA has registered right now, for the dropdowns."""
+    return sorted(hass.services.async_services().get("notify", {}))
+
+
+def _notify_selector(hass: HomeAssistant) -> selector.SelectSelector:
+    """Build a dropdown of notify services that still accepts one not registered yet."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=_notify_services(hass),
+            custom_value=True,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
 def _user_schema(
     hass: HomeAssistant, defaults: Mapping[str, Any] | None = None
 ) -> vol.Schema:
@@ -41,7 +63,6 @@ def _user_schema(
     # `notify_target` is a per-install device (e.g. the companion app on your
     # phone), so it's picked from the notify services HA actually has — with
     # `custom_value` on, so a service that hasn't registered yet can still be typed.
-    targets = sorted(hass.services.async_services().get("notify", {}))
     current = defaults or {}
     return vol.Schema(
         {
@@ -56,15 +77,30 @@ def _user_schema(
             vol.Required(
                 CONF_NOTIFY_TARGET,
                 description={"suggested_value": current.get(CONF_NOTIFY_TARGET)},
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=targets,
-                    custom_value=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
+            ): _notify_selector(hass),
         }
     )
+
+
+def _recipient_rows(recipients: Mapping[str, str]) -> list[dict[str, str]]:
+    """Turn the stored label → service map into the options form's editable rows."""
+    return [{_LABEL: label, _SERVICE: service} for label, service in recipients.items()]
+
+
+def _recipient_map(rows: list[dict[str, str]]) -> dict[str, str]:
+    """Turn the form's rows into the stored map, or raise ValueError with the error key."""
+    recipients: dict[str, str] = {}
+    for row in rows:
+        label = row.get(_LABEL, "").strip().casefold()
+        service = row.get(_SERVICE, "").strip()
+        if not label or not service:
+            error = "invalid_recipient"
+            raise ValueError(error)
+        if label in recipients:
+            error = "duplicate_recipient"
+            raise ValueError(error)
+        recipients[label] = service
+    return recipients
 
 
 async def _validate(hass: HomeAssistant, base_url: str, token: str) -> None:
@@ -163,14 +199,22 @@ class PineappleCoreConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class PineappleCoreOptionsFlow(OptionsFlowWithReload):
-    """Tune the poll interval and how far ahead Core is queried."""
+    """Tune polling, the mirror list, and who reminders can be addressed to."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Show + persist the tunable options."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            try:
+                recipients = _recipient_map(user_input.get(CONF_RECIPIENTS, []))
+            except ValueError as err:
+                errors[CONF_RECIPIENTS] = str(err)
+            else:
+                return self.async_create_entry(
+                    data={**user_input, CONF_RECIPIENTS: recipients}
+                )
         options = self.config_entry.options
         schema = vol.Schema(
             {
@@ -188,6 +232,24 @@ class PineappleCoreOptionsFlow(OptionsFlowWithReload):
                     CONF_MIRROR_ENTITIES,
                     default=options.get(CONF_MIRROR_ENTITIES, []),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
+                vol.Optional(
+                    CONF_RECIPIENTS,
+                    default=_recipient_rows(options.get(CONF_RECIPIENTS, {})),
+                ): selector.ObjectSelector(
+                    selector.ObjectSelectorConfig(
+                        fields={
+                            _LABEL: {"required": True, "selector": selector.TextSelector()},
+                            _SERVICE: {"required": True, "selector": _notify_selector(self.hass)},
+                        },
+                        multiple=True,
+                        label_field=_LABEL,
+                        description_field=_SERVICE,
+                        translation_key="recipient",
+                    )
+                ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        if user_input is not None:
+            # Keep what was typed when the form comes back with an error.
+            schema = self.add_suggested_values_to_schema(schema, user_input)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

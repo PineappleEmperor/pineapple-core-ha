@@ -32,8 +32,8 @@ below) is **not** a sensor: a cloudhook URL is a secret, so it is logged at DEBU
 2. In Home Assistant → **Settings → Devices & Services → Add Integration → Pineapple Core**.
 3. Enter your Core **base URL**, the **token**, and the **notify service** to fire
    (e.g. `mobile_app_your_phone`).
-4. Tune the **poll interval**, **look-ahead window**, and **entities to mirror to Core**
-   any time via the integration's *Configure* (options).
+4. Tune the **poll interval**, **look-ahead window**, **entities to mirror to Core**, and
+   **recipients** any time via the integration's *Configure* (options).
 5. Change the **base URL**, **token**, or **notify service** later via the entry's
    ⋮ menu → *Reconfigure* — no need to delete and re-add the integration.
 
@@ -50,6 +50,34 @@ way:
   instances can share one notify target without one's notification replacing the other's.
 - **Tapped actions** are forwarded only by the entry that sent the notification — the
   companion app's tap event is global, but a Core is never handed another's action token.
+
+## Reminders for more than one person
+
+Most reminders go to the entry's notify service. A reminder can also say who it is for:
+Core tags it with labels such as `dan` and `sian`, and you map each label to a phone
+under *Configure → Recipients*:
+
+| Label | Notify service |
+|---|---|
+| `dan` | `mobile_app_dan_phone` |
+| `sian` | `mobile_app_sian_phone` |
+
+Core only ever sends the labels, never a notify service name.
+
+- **No labels:** the reminder goes to the entry's notify service, exactly as before.
+- **An unknown label:** the reminder goes to the entry's notify service, and a warning
+  naming the label is logged. A typo never drops a reminder.
+- **Labels on the same phone** notify it once.
+- **When one phone fails,** the reminder still counts as delivered if another phone
+  accepted it: it is acked and never re-sent. The failed phone is named in the log.
+- **Nags** repeat to every phone that accepted the first delivery.
+- **Dismissal is shared.** A tap on either phone, or completing the item in Core, clears
+  the notification from every phone it reached. Home Assistant remembers who received
+  each reminder in memory only. After a restart, a clear from Core goes to the default
+  service and every mapped phone. Clearing a notification a phone never received does
+  nothing.
+
+Matching ignores case and surrounding spaces, so `Dan` in Core finds `dan`.
 
 ## How delivery works
 

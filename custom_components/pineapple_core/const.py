@@ -21,6 +21,10 @@ CONF_WINDOW_HOURS = "window_hours"
 # Entities whose state is mirrored back to Core (HA → Core helper push). Each is
 # pushed under its own id; Core maps it to a habit (ha_helper / ha_date_helper).
 CONF_MIRROR_ENTITIES = "mirror_entities"
+# Who a reminder can be addressed to: a {label: notify service} map. Core tags a
+# reminder with labels (`["dan", "sian"]`) and never learns a service name; a
+# reminder without labels goes to CONF_NOTIFY_TARGET as before.
+CONF_RECIPIENTS = "recipients"
 
 # Defaults (notify_target has none — it's a per-install device, required in the flow)
 DEFAULT_POLL_INTERVAL = timedelta(minutes=5)

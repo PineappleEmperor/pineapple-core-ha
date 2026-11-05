@@ -38,6 +38,17 @@ class Reminder:
     # The opaque retire-token echoed back on delivery ({"row": id} or
     # {"marker": {...}}) — never interpreted here, only relayed.
     ack: dict[str, Any] | None = None
+    # Who it is for, as labels the entry's recipients option maps to notify
+    # services; None means the entry's default notify target.
+    recipients: tuple[str, ...] | None = None
+
+
+def _recipients(raw: object) -> tuple[str, ...] | None:
+    """Read Core's optional `recipients` labels; anything else means the default target."""
+    if not isinstance(raw, list):
+        return None
+    labels = tuple(label for label in raw if isinstance(label, str) and label.strip())
+    return labels or None
 
 
 class PineappleCoreClient:
@@ -67,6 +78,7 @@ class PineappleCoreClient:
                 priority=r.get("priority", 3),
                 nag=r.get("nag"),
                 ack=r.get("ack"),
+                recipients=_recipients(r.get("recipients")),
             )
             for r in reminders
         ]

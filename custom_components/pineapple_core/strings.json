@@ -54,14 +54,20 @@
         "data": {
           "poll_interval": "Poll interval (minutes)",
           "window_hours": "How far ahead to fetch (hours)",
-          "mirror_entities": "Entities to mirror to Core"
+          "mirror_entities": "Entities to mirror to Core",
+          "recipients": "Recipients"
         },
         "data_description": {
           "poll_interval": "How often to re-sync the upcoming queue from Core.",
           "window_hours": "Reminders further ahead than this aren't fetched yet.",
-          "mirror_entities": "When these change, their value (numeric) or date (next_at) is pushed to Core under the entity's own id. Core maps each to a habit (its state helper or date source) — e.g. a bin input_number logs the habit, a bin sensor's date drives its reminder."
+          "mirror_entities": "When these change, their value (numeric) or date (next_at) is pushed to Core under the entity's own id. Core maps each to a habit (its state helper or date source) — e.g. a bin input_number logs the habit, a bin sensor's date drives its reminder.",
+          "recipients": "Who a reminder can be addressed to. Core tags a reminder with labels such as dan or sian, and each label here maps to the notify service on that person's phone (without the notify. prefix). A reminder with no labels goes to the entry's notify service. An unknown label also goes there, with a warning in the log."
         }
       }
+    },
+    "error": {
+      "duplicate_recipient": "Each label can only appear once.",
+      "invalid_recipient": "Every recipient needs a label and a notify service."
     }
   },
   "entity": {
@@ -72,6 +78,20 @@
     },
     "binary_sensor": {
       "core_reachable": { "name": "Core reachable" }
+    }
+  },
+  "selector": {
+    "recipient": {
+      "fields": {
+        "label": {
+          "name": "Label",
+          "description": "The name Core uses for this person, e.g. dan"
+        },
+        "service": {
+          "name": "Notify service",
+          "description": "Their phone's notify service, e.g. mobile_app_dan_phone"
+        }
+      }
     }
   }
 }

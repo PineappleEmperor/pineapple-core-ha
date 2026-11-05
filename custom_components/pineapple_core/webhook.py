@@ -5,7 +5,7 @@ registers its own `webhook_id` (and, when Nabu Casa cloud is active, a cloudhook
 so Core keeps POSTing to `HA_WEBHOOK_URL` — that URL now points here instead of at
 a YAML automation. The handler routes Core's existing payloads by their `event`:
 
-  clear    → notify.<target> message "clear_notification" (dismiss by tag)
+  clear    → notify.<each phone the tag went to> "clear_notification" (dismiss by tag)
   helper   → input_number.set_value(entity, value)
   reminder → notify.<target> (also the digest's `event`)
   digest   → notify.<target>
@@ -73,16 +73,25 @@ async def async_dispatch(
         return
     if event in ("clear", "reminder", "digest"):
         payload: dict[str, Any] = data.get("data") or {}
+        tag = payload.get("tag", "")
+        targets: list[str] | None = None
         # A clear is an app-side "handled" signal — also end the local nag chain for
-        # that tag, so completing an item in the app stops its nagging.
+        # that tag, so completing an item in the app stops its nagging — and it is
+        # sent to every phone the reminder went to, not just the default target.
         if event == "clear":
-            coordinator.note_external_clear(payload.get("tag", ""))
+            coordinator.note_external_clear(tag)
+            if tag:
+                targets = coordinator.clear_targets(tag)
         else:
             # Claim this push's action tokens: a tap is a global event, so the
             # entry that sent the notification must be the one that forwards it.
-            coordinator.note_actions(payload.get("tag", ""), payload)
+            coordinator.note_actions(tag, payload)
         await coordinator.async_notify(
-            data.get("title", ""), data.get("message", ""), payload, blocking=False
+            data.get("title", ""),
+            data.get("message", ""),
+            payload,
+            targets=targets,
+            blocking=False,
         )
         return
     _LOGGER.debug("Ignoring webhook with unknown event %r", event)

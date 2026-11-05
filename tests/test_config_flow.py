@@ -19,6 +19,7 @@ from custom_components.pineapple_core.const import (
     CONF_MIRROR_ENTITIES,
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
+    CONF_RECIPIENTS,
     CONF_WINDOW_HOURS,
     DOMAIN,
 )
@@ -345,4 +346,117 @@ async def test_options_flow_persists_tunables(
         CONF_POLL_INTERVAL: 10,
         CONF_WINDOW_HOURS: 6,
         CONF_MIRROR_ENTITIES: [],  # optional, defaults to none
+        CONF_RECIPIENTS: {},  # optional — no map, so every reminder uses notify_target
     }
+
+
+async def _open_options(hass: HomeAssistant, entry: MockConfigEntry, mock_upcoming) -> str:
+    """Load the entry and open its options flow, returning the flow id."""
+    mock_upcoming([])
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result.get("type") is FlowResultType.FORM
+    return result["flow_id"]
+
+
+async def test_options_flow_stores_recipients_as_a_label_map(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+    mock_upcoming,
+) -> None:
+    """Recipient rows are saved as label → notify service, labels trimmed and lower-cased."""
+    flow_id = await _open_options(hass, mock_config_entry, mock_upcoming)
+    result = await hass.config_entries.options.async_configure(
+        flow_id,
+        {
+            CONF_POLL_INTERVAL: 5,
+            CONF_WINDOW_HOURS: 12,
+            CONF_RECIPIENTS: [
+                {"label": " Dan ", "service": "mobile_app_dan_phone"},
+                {"label": "sian", "service": "mobile_app_sian_phone"},
+            ],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result.get("type") is FlowResultType.CREATE_ENTRY
+    assert mock_config_entry.options[CONF_RECIPIENTS] == {
+        "dan": "mobile_app_dan_phone",
+        "sian": "mobile_app_sian_phone",
+    }
+    # The reload picked the map up.
+    assert mock_config_entry.runtime_data.recipients == {
+        "dan": "mobile_app_dan_phone",
+        "sian": "mobile_app_sian_phone",
+    }
+
+
+async def test_options_flow_shows_saved_recipients_as_rows(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    entry_data: dict,
+    mock_upcoming,
+) -> None:
+    """Reopening Configure offers the stored map back as editable rows."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=entry_data,
+        options={CONF_RECIPIENTS: {"dan": "mobile_app_dan_phone"}},
+        unique_id=BASE_URL,
+    )
+    mock_upcoming([])
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"].schema
+    field = next(k for k in schema if k == CONF_RECIPIENTS)
+    assert field.default() == [{"label": "dan", "service": "mobile_app_dan_phone"}]
+
+
+async def test_options_flow_rejects_a_duplicate_label(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+    mock_upcoming,
+) -> None:
+    """Two rows with one label is an error, not a silent overwrite."""
+    flow_id = await _open_options(hass, mock_config_entry, mock_upcoming)
+    result = await hass.config_entries.options.async_configure(
+        flow_id,
+        {
+            CONF_POLL_INTERVAL: 5,
+            CONF_WINDOW_HOURS: 12,
+            CONF_RECIPIENTS: [
+                {"label": "dan", "service": "mobile_app_dan_phone"},
+                {"label": "DAN", "service": "mobile_app_dan_tablet"},
+            ],
+        },
+    )
+    assert result.get("type") is FlowResultType.FORM
+    assert result.get("errors") == {CONF_RECIPIENTS: "duplicate_recipient"}
+    assert CONF_RECIPIENTS not in mock_config_entry.options
+
+
+async def test_options_flow_rejects_a_blank_recipient(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    mock_config_entry: MockConfigEntry,
+    mock_upcoming,
+) -> None:
+    """A row with a blank label or service can't be saved."""
+    flow_id = await _open_options(hass, mock_config_entry, mock_upcoming)
+    result = await hass.config_entries.options.async_configure(
+        flow_id,
+        {
+            CONF_POLL_INTERVAL: 5,
+            CONF_WINDOW_HOURS: 12,
+            CONF_RECIPIENTS: [{"label": "  ", "service": "mobile_app_dan_phone"}],
+        },
+    )
+    assert result.get("type") is FlowResultType.FORM
+    assert result.get("errors") == {CONF_RECIPIENTS: "invalid_recipient"}

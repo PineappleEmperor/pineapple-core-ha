@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from copy import deepcopy
@@ -28,6 +29,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_NOTIFY_TARGET,
     CONF_POLL_INTERVAL,
+    CONF_RECIPIENTS,
     CONF_WINDOW_HOURS,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WINDOW_HOURS,
@@ -36,6 +38,8 @@ from .const import (
 from .helpers import instance_label
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from homeassistant.core import Event
 
     from . import PineappleCoreConfigEntry
@@ -50,6 +54,11 @@ _LEVELS = ("passive", "active", "time-sensitive", "critical")
 # action belongs to THIS entry, so it must outlive the feed (a tap can land long
 # after Core dropped the reminder); a FIFO cap bounds it instead.
 _MAX_ACTION_TOKENS = 200
+
+# Cap on remembered tag → delivered-to targets. Core's `clear` for a delivered
+# reminder can arrive days after the feed dropped it (an invoice paid early), so
+# the record must outlive the feed the same way the action tokens do.
+_MAX_TARGET_RECORDS = 200
 
 
 def _interval_seconds(interval: str | None) -> int | None:
@@ -88,6 +97,7 @@ class _Nag:
 
     reminder: Reminder
     interval: int
+    targets: tuple[str, ...]  # the notify services that accepted the first delivery
     count: int = 0  # repeats sent so far
     cancel: CALLBACK_TYPE | None = None
 
@@ -104,6 +114,8 @@ class _State:
     nags: dict[str, _Nag] = field(default_factory=dict)
     pending_acks: dict[str, dict[str, Any]] = field(default_factory=dict)
     action_tags: dict[str, str] = field(default_factory=dict)  # action token → tag
+    # tag → the notify services that accepted it, so a clear reaches every phone.
+    targets: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
@@ -139,6 +151,11 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         self.device_name: str = entry.title
         self._tag_prefix: str = f"{instance_label(self.base_url)}_"
         self._notify_target: str = entry.data[CONF_NOTIFY_TARGET]
+        # Labels are matched case-insensitively, so `Dan` in Core finds `dan` here.
+        self._recipients: dict[str, str] = {
+            label.strip().casefold(): service
+            for label, service in entry.options.get(CONF_RECIPIENTS, {}).items()
+        }
         self._window_hours: int = entry.options.get(CONF_WINDOW_HOURS, DEFAULT_WINDOW_HOURS)
         # The integration's own inbound webhook URL (set at setup) — surfaced on a
         # diagnostic sensor so the user can copy it into Core's HA_WEBHOOK_URL.
@@ -150,6 +167,11 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
     def notify_target(self) -> str:
         """The notify service reminders + Core pushes are delivered to."""
         return self._notify_target
+
+    @property
+    def recipients(self) -> dict[str, str]:
+        """The label → notify service map reminders with recipients resolve through."""
+        return dict(self._recipients)
 
     @property
     def _scheduled(self) -> dict[str, CALLBACK_TYPE]:
@@ -230,17 +252,62 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             return
         self._s.fired.add(reminder.tag)  # claim before awaiting → no concurrent double-fire
         self.note_actions(reminder.tag, reminder.data)
-        if not await self.async_notify(
-            reminder.title, reminder.message, _payload(reminder)
-        ):
+        # One accepting phone counts as delivered: it is acked, so it is never
+        # re-sent, and a phone that failed is logged by name in async_notify.
+        accepted = await self.async_notify(
+            reminder.title,
+            reminder.message,
+            _payload(reminder),
+            targets=self._resolve(reminder),
+        )
+        if not accepted:
             self._s.fired.discard(reminder.tag)  # let the next poll re-arm it
             for token in [t for t, tag in self._s.action_tags.items() if tag == reminder.tag]:
                 self._s.action_tags.pop(token, None)
             return
+        self._record_targets(reminder.tag, accepted)
         if reminder.ack:
             self._s.pending_acks[reminder.tag] = reminder.ack
             await self._retry_acks()
-        self._start_nag(reminder)
+        self._start_nag(reminder, accepted)
+
+    def _resolve(self, reminder: Reminder) -> list[str]:
+        """Map a reminder's recipient labels to notify services, de-duplicated."""
+        if not reminder.recipients:
+            return [self._notify_target]
+        services: list[str] = []
+        for label in reminder.recipients:
+            service = self._recipients.get(label.strip().casefold())
+            if service is None:
+                # A typo in Core or a label not mapped yet must never drop a reminder.
+                _LOGGER.warning(
+                    "Reminder %s is for unknown recipient %r; sending it to notify.%s "
+                    "instead. Map the label under the entry's Configure → Recipients",
+                    reminder.tag,
+                    label,
+                    self._notify_target,
+                )
+                service = self._notify_target
+            if service not in services:
+                services.append(service)
+        return services
+
+    @callback
+    def _record_targets(self, tag: str, targets: Iterable[str]) -> None:
+        """Remember which services accepted a tag, so its clear reaches each of them."""
+        self._s.targets.pop(tag, None)
+        self._s.targets[tag] = tuple(targets)
+        while len(self._s.targets) > _MAX_TARGET_RECORDS:
+            self._s.targets.pop(next(iter(self._s.targets)))
+
+    def clear_targets(self, tag: str) -> list[str]:
+        """Return the notify services a clear for this tag must reach."""
+        if recorded := self._s.targets.get(tag):
+            return list(recorded)
+        # Unrecorded (HA restarted since it was sent, or Core is clearing a sibling
+        # tag this entry never delivered): the default target and every mapped
+        # phone. Clearing a tag a phone never got is a no-op on that phone.
+        return list(dict.fromkeys([self._notify_target, *self._recipients.values()]))
 
     def namespaced_tag(self, tag: str) -> str:
         """Prefix a Core tag with this instance's label."""
@@ -250,16 +317,41 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         return f"{self._tag_prefix}{tag}"
 
     async def async_notify(
-        self, title: str, message: str, data: dict[str, Any], *, blocking: bool = True
-    ) -> bool:
-        """Call the notify service with this instance's tag namespace applied."""
+        self,
+        title: str,
+        message: str,
+        data: dict[str, Any],
+        *,
+        targets: Iterable[str] | None = None,
+        blocking: bool = True,
+    ) -> list[str]:
+        """Notify each target (default: notify_target), returning those that accepted."""
         payload = dict(data)
         if tag := payload.get("tag"):
             payload["tag"] = self.namespaced_tag(str(tag))
+        services = list(targets) if targets is not None else [self._notify_target]
+        results = await asyncio.gather(
+            *(
+                self._notify_one(service, title, message, payload, blocking=blocking)
+                for service in services
+            )
+        )
+        return [service for service, ok in zip(services, results, strict=True) if ok]
+
+    async def _notify_one(
+        self,
+        service: str,
+        title: str,
+        message: str,
+        payload: dict[str, Any],
+        *,
+        blocking: bool,
+    ) -> bool:
+        """Call one notify service; a failure is logged by name, never raised."""
         try:
             await self.hass.services.async_call(
                 "notify",
-                self._notify_target,
+                service,
                 {"title": title, "message": message, "data": payload},
                 blocking=blocking,
             )
@@ -267,26 +359,30 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             # Expected while the target integration is still loading (a restart or a
             # reload window), and after a phone is renamed — neither is a crash.
             _LOGGER.warning(
-                "notify.%s is not registered; reconfigure the entry to point at a "
-                "notify service that exists",
-                self._notify_target,
+                "notify.%s is not registered; point the entry's notify service or "
+                "recipients at a notify service that exists",
+                service,
             )
             return False
         except Exception:
-            _LOGGER.exception("notify.%s failed", self._notify_target)
+            _LOGGER.exception("notify.%s failed", service)
             return False
         return True
 
     # --- nag chain (slice 4) ---
     @callback
-    def _start_nag(self, reminder: Reminder) -> None:
+    def _start_nag(self, reminder: Reminder, targets: Iterable[str]) -> None:
         """Arm the first repeat if Core gave this reminder a nag policy."""
         nag = reminder.nag or {}
         seconds = _interval_seconds(nag.get("interval"))
         if seconds is None or nag.get("max", 0) <= 0:
             return
         self._cancel_nag(reminder.tag)
-        self._s.nags[reminder.tag] = _Nag(reminder=reminder, interval=seconds)
+        # The chain keeps its own targets: it repeats to exactly the phones that
+        # accepted the first delivery, whatever happens to the capped record.
+        self._s.nags[reminder.tag] = _Nag(
+            reminder=reminder, interval=seconds, targets=tuple(targets)
+        )
         self._schedule_nag(reminder.tag)
 
     @callback
@@ -315,7 +411,10 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
         data = _escalated(nag.reminder.data, nag.count) if escalate else nag.reminder.data
         self.hass.async_create_task(
             self.async_notify(
-                nag.reminder.title, nag.reminder.message, _payload(nag.reminder, data)
+                nag.reminder.title,
+                nag.reminder.message,
+                _payload(nag.reminder, data),
+                targets=nag.targets,
             )
         )
         if nag.count < (nag.reminder.nag or {}).get("max", 0):
@@ -386,8 +485,10 @@ class PineappleCoreCoordinator(DataUpdateCoordinator[list[Reminder]]):
             _LOGGER.warning("Could not forward tapped action to Core: %s", err)
 
     async def _clear(self, tag: str) -> None:
-        """Dismiss the delivered notification off the phone by its tag."""
-        await self.async_notify("", "clear_notification", {"tag": tag})
+        """Dismiss the delivered notification off every phone it reached, by its tag."""
+        await self.async_notify(
+            "", "clear_notification", {"tag": tag}, targets=self.clear_targets(tag)
+        )
 
     async def _retry_acks(self) -> None:
         """Confirm delivered entries to Core; keep unconfirmed ones for the next try."""
